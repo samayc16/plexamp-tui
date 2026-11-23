@@ -100,6 +100,14 @@ class Queue:
             current += 1  # dropped above the playing track
         return replace(self, tracks=tuple(items), current=current, queued=queued + (1 if joins else 0))
 
+    def to_up_next(self, index: int, front: bool = True) -> Queue:
+        """Move a queued track into Up Next: to its front ("play next") or its end."""
+        if not 0 <= index < len(self.tracks) or index == self.current:
+            return self
+        current = self.current - (1 if index < self.current else 0)  # once the track is taken out
+        queued = self.queued - (1 if self._in_up_next(index) else 0)
+        return self.move(index, current + 1 if front else current + queued + 1)
+
     def jump(self, index: int) -> Queue:
         if not 0 <= index < len(self.tracks):
             return self

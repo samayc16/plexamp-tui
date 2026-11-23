@@ -171,3 +171,19 @@ def test_shuffle_keeps_up_next_in_order() -> None:
     s = q.shuffled(random.Random(3))
     assert [t.id for t in s.up_next] == ["50", "51"]
     assert sorted(t.id for t in s.rest) == sorted(t.id for t in q.rest)
+
+
+def test_moving_a_queued_track_into_up_next() -> None:
+    q = album_playing().add_up_next([track(8)])  # 1 | 8 | 2 3 4
+    front = q.to_up_next(4, front=True)  # "4" to play next
+    assert [t.id for t in front.up_next] == ["4", "8"] and [t.id for t in front.rest] == ["2", "3"]
+    end = q.to_up_next(3, front=False)  # "3" to the end of up next
+    assert [t.id for t in end.up_next] == ["8", "3"] and [t.id for t in end.rest] == ["2", "4"]
+    again = q.to_up_next(1, front=False)  # already the only up-next track: stays put
+    assert ids(again) == ids(q) and again.queued == 1
+
+
+def test_moving_a_played_track_back_into_up_next() -> None:
+    q = album_playing().advanced().advanced()  # 1 2 | playing 3 | 4
+    moved = q.to_up_next(0, front=True)
+    assert moved.track.id == "3" and [t.id for t in moved.up_next] == ["1"] and moved.history[0].id == "2"

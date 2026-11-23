@@ -154,6 +154,13 @@ class Player:
     async def move(self, index: int, to: int) -> None:
         await self._mutate(self.queue.move(index, to))
 
+    async def to_up_next(self, index: int, front: bool = True) -> int:
+        """Move a queued track into Up Next; returns where it ended up."""
+        if not 0 <= index < len(self.queue.tracks) or index == self.queue.current:
+            return index
+        await self._mutate(self.queue.to_up_next(index, front))
+        return self.queue.current + 1 if front else self.queue.current + self.queue.queued
+
     async def shuffle(self) -> None:
         await self._mutate(self.queue.shuffled())
 

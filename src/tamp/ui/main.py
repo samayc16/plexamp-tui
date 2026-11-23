@@ -43,7 +43,10 @@ def menu_items(entry: Entry, page_kind: str, liked: bool) -> list[MenuItem]:
         if page_kind == "queue":
             items: list[MenuItem] = [
                 ("play", "Play now", "enter"),
-                ("move_next", "Move to play next", ""),
+                ("move_next", "Move to play next", "N"),
+                ("move_up_next_end", "Move to end of Up Next", "a"),
+                ("move_up", "Move up", "K"),
+                ("move_down", "Move down", "J"),
                 ("remove", "Remove from queue", "d"),
             ]
         else:
@@ -124,8 +127,8 @@ class MainScreen(Screen):
         Binding("R", "repeat", "repeat", show=False),
         Binding("S", "shuffle_queue", "shuffle queue", show=False),
         Binding("d", "remove", "remove", show=False),
-        Binding("J", "move(1)", "move down", show=False),
-        Binding("K", "move(-1)", "move up", show=False),
+        Binding("J,shift+down", "move(1)", "move down", show=False),
+        Binding("K,shift+up", "move(-1)", "move up", show=False),
         Binding("C", "clear_upcoming", "clear", show=False),
         Binding("w", "save_queue", "save queue", show=False),
         Binding("P", "add_to_playlist", "add to playlist", show=False),
@@ -403,7 +406,7 @@ class MainScreen(Screen):
     def refresh_queue_page(self) -> None:
         """Rebuild the queue page only when the queue itself changed, not on every tick."""
         q = self.tamp.player.queue
-        key = (tuple(t.id for t in q.tracks), q.current, tuple(t.liked for t in q.tracks))
+        key = (tuple(t.id for t in q.tracks), q.current, q.queued, tuple(t.liked for t in q.tracks))
         changed, self._queue_key = key != self._queue_key, key
         if not changed or not self.page or self.page.kind != "queue":
             return
@@ -411,6 +414,22 @@ class MainScreen(Screen):
         self.pages[-1] = pages.queue(q)
         self.pages[-1].highlighted = highlighted
         self.render_page()
+
+    def on_queue_track(self, entry: Entry | None) -> bool:
+        return bool(self.page and self.page.kind == "queue" and entry and entry.kind == "track")
+
+    def focus_queue_position(self, position: int) -> None:
+        """After a move, rebuild the queue page and keep the cursor on the moved track."""
+        self.refresh_queue_page()
+        if not self.page or self.page.kind != "queue":
+            return
+        found = next(
+            (i for i, e in enumerate(self.page.entries) if e.kind == "track" and e.label == str(position)),
+            None,
+        )
+        if found is not None:
+            self.page.highlighted = found
+            self.query_one("#browser", Browser).highlighted = found
 
     def rerender(self) -> None:
         if self.page:
@@ -587,8 +606,11 @@ class MainScreen(Screen):
         elif choice == "play_next":
             await self.action_add_next()
         elif choice == "move_next":
-            position = int(entry.label)
-            await player.move(position, player.queue.current + (1 if position > player.queue.current else 0))
+            self.focus_queue_position(await player.to_up_next(int(entry.label), front=True))
+        elif choice in ("move_up", "move_down"):
+            await self.action_move(-1 if choice == "move_up" else 1)
+        elif choice == "move_up_next_end":
+            self.focus_queue_position(await player.to_up_next(int(entry.label), front=False))
         elif choice == "add":
             await self.action_add()
         elif choice == "remove":
@@ -686,14 +708,18 @@ class MainScreen(Screen):
     @guarded
     async def action_add(self) -> None:
         entry, _ = self.selected()
-        if entry and (tracks := await self.tracks_of(entry)):
+        if self.on_queue_track(entry):  # in the queue: move it to the end of Up Next
+            self.focus_queue_position(await self.tamp.player.to_up_next(int(entry.label), front=False))
+        elif entry and (tracks := await self.tracks_of(entry)):
             await self.tamp.player.add_up_next(tracks)
             self.notify(f"added {len(tracks)} to Up Next")
 
     @guarded
     async def action_add_next(self) -> None:
         entry, _ = self.selected()
-        if entry and (tracks := await self.tracks_of(entry)):
+        if self.on_queue_track(entry):  # in the queue: move it to play next
+            self.focus_queue_position(await self.tamp.player.to_up_next(int(entry.label), front=True))
+        elif entry and (tracks := await self.tracks_of(entry)):
             await self.tamp.player.play_next(tracks)
             self.notify(f"{len(tracks)} playing next")
 
@@ -738,10 +764,12 @@ class MainScreen(Screen):
 
     @guarded
     async def action_move(self, delta: int) -> None:
-        entry, i = self.selected()
-        if self.page and self.page.kind == "queue" and entry and entry.kind == "track":
-            await self.tamp.player.move(int(entry.label), int(entry.label) + delta)
-            self.query_one("#browser", Browser).highlighted = max(0, i + delta)
+        entry, _ = self.selected()
+        if self.on_queue_track(entry):
+            position = int(entry.label)
+            target = min(max(0, position + delta), len(self.tamp.player.queue.tracks) - 1)
+            await self.tamp.player.move(position, target)
+            self.focus_queue_position(target)
 
     @guarded
     async def action_clear_upcoming(self) -> None:
