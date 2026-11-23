@@ -83,8 +83,18 @@ class SignInScreen(Screen[str]):
             (self.login.link_code, f"bold {YELLOW}"),
         )
         self.query_one("#signin-steps", Static).update(steps)
-        self.query_one("#signin-qr", Static).update(qr_text(self.login.url))
+        self._show_qr()
         self.query_one("#signin-status", Static).update(Text("waiting for you to approve…", style=DIM))
+
+    def _show_qr(self) -> None:
+        if not self.login:
+            return
+        qr = qr_text(self.login.short_url)
+        fits = len(qr.plain.splitlines()) + 12 <= self.size.height
+        self.query_one("#signin-qr", Static).update(qr if fits else Text("(make the window taller to see a QR code)", style=DIM))
+
+    def on_resize(self) -> None:
+        self._show_qr()
 
     def action_copy(self) -> None:
         if self.login:

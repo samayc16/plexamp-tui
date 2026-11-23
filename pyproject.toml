@@ -3,6 +3,7 @@ name = "tamp"
 version = "0.1.0"
 description = "A keyboard-driven Plex music player for the terminal: local gapless playback or remote control"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
   "textual>=8.2",
@@ -10,6 +11,9 @@ dependencies = [
   "qrcode>=8.2",
   "pillow>=11",
 ]
+
+[project.urls]
+Homepage = "https://github.com/samayc16/tamp"
 
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-asyncio>=0.24"]

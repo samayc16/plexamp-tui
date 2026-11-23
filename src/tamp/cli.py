@@ -34,7 +34,9 @@ def main(argv: list[str] | None = None) -> int:
         from tamp.mpv import send
 
         try:
-            asyncio.run(send(config.MPV_SOCKET, "script-message", "tamp", args.command))
+            from tamp.mpv import short_socket
+
+            asyncio.run(send(short_socket(config.MPV_SOCKET), "script-message", "tamp", args.command))
         except OSError:
             print("tamp isn't running", file=sys.stderr)
             return 1

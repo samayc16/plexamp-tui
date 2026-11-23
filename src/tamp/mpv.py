@@ -8,10 +8,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import itertools
+import hashlib
 import json
 import os
 import shutil
 import signal
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -23,9 +25,17 @@ class MpvError(RuntimeError):
     pass
 
 
+def short_socket(path: Path) -> Path:
+    """Unix socket paths are capped at ~104 bytes (macOS): fall back to a short temp path."""
+    if len(str(path)) < 100:
+        return path
+    digest = hashlib.sha1(str(path).encode()).hexdigest()[:12]
+    return Path(tempfile.gettempdir()) / f"tamp-{os.getuid()}" / f"{digest}.sock"
+
+
 class Mpv:
     def __init__(self, socket: Path, on_event: Callable[[dict], None]) -> None:
-        self.socket = socket
+        self.socket = short_socket(socket)
         self.on_event = on_event
         self._process: asyncio.subprocess.Process | None = None
         self._writer: asyncio.StreamWriter | None = None

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import uuid
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -22,14 +21,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 STATUS_FILE = STATE_DIR / "status.json"  # what's playing, for `tamp status` / tmux
 QUEUE_FILE = STATE_DIR / "queue.json"
 
-
-def _socket(name: str) -> Path:
-    """Unix socket paths are capped at ~104 bytes (macOS); fall back to a short temp path."""
-    path = STATE_DIR / name
-    return path if len(str(path)) < 100 else Path(tempfile.gettempdir()) / f"tamp-{os.getuid()}" / name
-
-
-MPV_SOCKET = _socket("mpv.sock")
+MPV_SOCKET = STATE_DIR / "mpv.sock"  # shortened by tamp.mpv if the path is too long
 ART_DIR = CACHE_DIR / "art"
 
 

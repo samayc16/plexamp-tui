@@ -57,6 +57,7 @@ class Login:
     link_id: int
     link_code: str
     url: str
+    short_url: str  # the same sign-in, fewer bytes: a smaller QR code
 
 
 def start_login(client_id: str) -> Login:
@@ -74,7 +75,8 @@ def start_login(client_id: str) -> Login:
         "context[device][device]": h["X-Plex-Device"],
     }
     url = "https://app.plex.tv/auth#?" + urlencode(params)
-    return Login(oauth_id=o["id"], oauth_code=o["code"], link_id=k["id"], link_code=k["code"], url=url)
+    short = "https://app.plex.tv/auth#?" + urlencode({k: params[k] for k in ("clientID", "code", "context[device][product]")})
+    return Login(oauth_id=o["id"], oauth_code=o["code"], link_id=k["id"], link_code=k["code"], url=url, short_url=short)
 
 
 def poll_login(client_id: str, login: Login) -> str | None:
