@@ -22,7 +22,11 @@ def test_lrc_timed_lines_sorted_with_repeats_and_offset() -> None:
     text = "[ti:Song]\n[offset:+500]\n[00:12.50][01:00.00]Chorus\n[00:05.1]Verse\n"
     lyrics = lrc.parse(text)
     assert lyrics.timed
-    assert [(line.time_ms, line.text) for line in lyrics.lines] == [(4600, "Verse"), (12000, "Chorus"), (59500, "Chorus")]
+    assert [(line.time_ms, line.text) for line in lyrics.lines] == [
+        (4600, "Verse"),
+        (12000, "Chorus"),
+        (59500, "Chorus"),
+    ]
 
 
 def test_lrc_index_at_tracks_position() -> None:

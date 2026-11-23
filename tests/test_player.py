@@ -10,8 +10,9 @@ from tamp.demo import DemoLibrary
 from tamp.models import Device, Playback, Stream, Track
 from tamp.mpv import Mpv
 from tamp.output import LocalOutput, ReadOnly
-from tamp.player import Player, status_line
+from tamp.player import Player
 from tamp.queue import Queue
+from tamp.status import line as status_line
 
 
 @pytest.fixture(autouse=True)
@@ -105,7 +106,9 @@ async def test_queue_survives_a_restart() -> None:
 
 
 def test_status_line_empty_without_a_live_tamp() -> None:
-    config.write_state(config.STATUS_FILE, {"pid": 999_999_999, "state": "playing", "title": "x", "artist": "y"})
+    config.write_state(
+        config.STATUS_FILE, {"pid": 999_999_999, "state": "playing", "title": "x", "artist": "y"}
+    )
     assert status_line() == ""
 
 

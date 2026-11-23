@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import asyncio
+from typing import ClassVar
 
 import qrcode
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Center, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Input, OptionList, Static
@@ -42,7 +43,7 @@ def qr_text(data: str) -> Text:
 class SignInScreen(Screen[str]):
     """Dismisses with the plex.tv account token."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("c", "copy", "copy link"),
         Binding("o", "open", "open in browser"),
         Binding("n", "restart", "new code"),
@@ -57,7 +58,9 @@ class SignInScreen(Screen[str]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="signin"):
-            yield Static(Text("tamp", style=f"bold {PINK}") + Text("  ·  sign in to Plex", style=FG), id="signin-title")
+            yield Static(
+                Text("tamp", style=f"bold {PINK}") + Text("  ·  sign in to Plex", style=FG), id="signin-title"
+            )
             yield Static("", id="signin-steps")
             with Center():
                 yield Static("", id="signin-qr")
@@ -73,13 +76,23 @@ class SignInScreen(Screen[str]):
         try:
             self.login = await asyncio.to_thread(plex.start_login, self.client_id)
         except Exception as e:  # offline, DNS, plex.tv down
-            self.query_one("#signin-status", Static).update(Text(f"couldn't reach plex.tv: {e}\npress n to try again", style=PINK))
+            self.query_one("#signin-status", Static).update(
+                Text(f"couldn't reach plex.tv: {e}\npress n to try again", style=PINK)
+            )
             return
         steps = Text.assemble(
-            ("1  ", YELLOW), ("press ", FG), ("o", f"bold {GREEN}"), (" to open the sign-in page, or ", FG), ("c", f"bold {GREEN}"),
+            ("1  ", YELLOW),
+            ("press ", FG),
+            ("o", f"bold {GREEN}"),
+            (" to open the sign-in page, or ", FG),
+            ("c", f"bold {GREEN}"),
             (" to copy the link\n", FG),
-            ("2  ", YELLOW), ("or scan this with your phone\n", FG),
-            ("3  ", YELLOW), ("or on any device go to ", FG), ("plex.tv/link", f"bold {CYAN}"), (" and enter ", FG),
+            ("2  ", YELLOW),
+            ("or scan this with your phone\n", FG),
+            ("3  ", YELLOW),
+            ("or on any device go to ", FG),
+            ("plex.tv/link", f"bold {CYAN}"),
+            (" and enter ", FG),
             (self.login.link_code, f"bold {YELLOW}"),
         )
         self.query_one("#signin-steps", Static).update(steps)
@@ -91,7 +104,9 @@ class SignInScreen(Screen[str]):
             return
         qr = qr_text(self.login.short_url)
         fits = len(qr.plain.splitlines()) + 12 <= self.size.height
-        self.query_one("#signin-qr", Static).update(qr if fits else Text("(make the window taller to see a QR code)", style=DIM))
+        self.query_one("#signin-qr", Static).update(
+            qr if fits else Text("(make the window taller to see a QR code)", style=DIM)
+        )
 
     def on_resize(self) -> None:
         self._show_qr()
@@ -120,7 +135,7 @@ class SignInScreen(Screen[str]):
 
 
 class PinScreen(ModalScreen[str]):
-    BINDINGS = [Binding("escape", "cancel", "back")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "back")]
 
     def __init__(self, user: str, error: str = "") -> None:
         super().__init__()
@@ -143,7 +158,10 @@ class PinScreen(ModalScreen[str]):
 class PickScreen(Screen[int]):
     """A titled list; dismisses with the chosen index (-1 to go back)."""
 
-    BINDINGS = [Binding("escape", "back", "back"), Binding("q", "app.quit", "quit")]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "back", "back"),
+        Binding("q", "app.quit", "quit"),
+    ]
 
     def __init__(self, title: str, rows: list[Text], hint: str = "") -> None:
         super().__init__()
@@ -154,7 +172,9 @@ class PickScreen(Screen[int]):
             yield Static(Text(self.title_text, style=f"bold {PINK}"), id="pick-title")
             if self.hint:
                 yield Static(Text(self.hint, style=DIM))
-            yield OptionList(*[Option(row, id=str(i)) for i, row in enumerate(self.rows)], markup=False, id="pick-list")
+            yield OptionList(
+                *[Option(row, id=str(i)) for i, row in enumerate(self.rows)], markup=False, id="pick-list"
+            )
         yield Footer()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:

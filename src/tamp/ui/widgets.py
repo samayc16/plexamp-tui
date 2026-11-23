@@ -22,7 +22,9 @@ def progress_bar(position_ms: int, duration_ms: int, width: int) -> Text:
     bar_w = max(4, width - len(left) - len(right) - 2)
     done = int(bar_w * position_ms / duration_ms) if duration_ms else 0
     done = min(done, bar_w)
-    return Text.assemble((left + " ", DIM), (BAR_FULL * done, GREEN), (BAR_EMPTY * (bar_w - done), DIM), (" " + right, DIM))
+    return Text.assemble(
+        (left + " ", DIM), (BAR_FULL * done, GREEN), (BAR_EMPTY * (bar_w - done), DIM), (" " + right, DIM)
+    )
 
 
 def lyrics_text(lyrics: Lyrics, position_ms: int, height: int, width: int) -> Text:
@@ -70,18 +72,31 @@ class NowPlaying(Vertical):
         t = self.state.track
         info = self.query_one("#np-info", Static)
         if t is None:
-            info.update(Text("nothing playing\n", style=DIM) + Text("pick something and press enter", style=DIM))
+            info.update(
+                Text("nothing playing\n", style=DIM) + Text("pick something and press enter", style=DIM)
+            )
         else:
             year = f" ({t.year})" if t.year else ""
-            quality = " · ".join(x for x in (t.codec.upper() if t.codec else "", f"{t.bitrate_kbps} kbps" if t.bitrate_kbps else "") if x)
-            info.update(Text.assemble(
-                (fit(t.title, width) + "\n", f"bold {FG}"),
-                (fit(t.artist, width) + "\n", PINK),
-                (fit(f"{t.album}{year}", width) + "\n", CYAN),
-                (quality, DIM),
-            ))
+            quality = " · ".join(
+                x
+                for x in (
+                    t.codec.upper() if t.codec else "",
+                    f"{t.bitrate_kbps} kbps" if t.bitrate_kbps else "",
+                )
+                if x
+            )
+            info.update(
+                Text.assemble(
+                    (fit(t.title, width) + "\n", f"bold {FG}"),
+                    (fit(t.artist, width) + "\n", PINK),
+                    (fit(f"{t.album}{year}", width) + "\n", CYAN),
+                    (quality, DIM),
+                )
+            )
         dur = self.state.duration_ms or (t.duration_ms if t else 0)
-        self.query_one("#np-progress", Static).update(progress_bar(self.state.position_ms, dur, width) if t else Text())
+        self.query_one("#np-progress", Static).update(
+            progress_bar(self.state.position_ms, dur, width) if t else Text()
+        )
         self.query_one("#np-status", Static).update(self._status())
         self.query_one("#np-below", Static).update(self._below(width))
 
@@ -94,18 +109,28 @@ class NowPlaying(Vertical):
         if self.sleep_at:
             sleep = f"  zz {max(0, int(self.sleep_at - time.time()) // 60)}m"
         return Text.assemble(
-            icon, (repeat, PURPLE), (like, PINK), (sleep, ORANGE), (f"  vol {s.volume}", DIM),
-            ("\n→ ", DIM), (self.device, CYAN), ("  · leveling" if self.loudness else "", DIM),
+            icon,
+            (repeat, PURPLE),
+            (like, PINK),
+            (sleep, ORANGE),
+            (f"  vol {s.volume}", DIM),
+            ("\n→ ", DIM),
+            (self.device, CYAN),
+            ("  · leveling" if self.loudness else "", DIM),
         )
 
     def _below(self, width: int) -> Text:
         height = max(3, self.size.height - 22)
         if self.lyrics and self.lyrics.lines:
-            return Text("lyrics\n", style=f"bold {DIM}") + lyrics_text(self.lyrics, self.state.position_ms, height, width)
+            return Text("lyrics\n", style=f"bold {DIM}") + lyrics_text(
+                self.lyrics, self.state.position_ms, height, width
+            )
         upcoming = self.queue.upcoming[:height]
         if not upcoming:
             return Text(self.queue.source, style=DIM)
-        text = Text(f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", style=f"bold {DIM}")
+        text = Text(
+            f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", style=f"bold {DIM}"
+        )
         for t in upcoming:
             text.append(fit(f"{t.title} · {t.artist}", width) + "\n", style=FG)
         return text

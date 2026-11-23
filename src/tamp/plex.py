@@ -75,8 +75,12 @@ def start_login(client_id: str) -> Login:
         "context[device][device]": h["X-Plex-Device"],
     }
     url = "https://app.plex.tv/auth#?" + urlencode(params)
-    short = "https://app.plex.tv/auth#?" + urlencode({k: params[k] for k in ("clientID", "code", "context[device][product]")})
-    return Login(oauth_id=o["id"], oauth_code=o["code"], link_id=k["id"], link_code=k["code"], url=url, short_url=short)
+    short = "https://app.plex.tv/auth#?" + urlencode(
+        {k: params[k] for k in ("clientID", "code", "context[device][product]")}
+    )
+    return Login(
+        oauth_id=o["id"], oauth_code=o["code"], link_id=k["id"], link_code=k["code"], url=url, short_url=short
+    )
 
 
 def poll_login(client_id: str, login: Login) -> str | None:
@@ -101,7 +105,11 @@ class HomeUser:
 
 def home_users(client_id: str, token: str) -> list[HomeUser]:
     """Everyone in your Plex Home (just you if there's no Home), admin first."""
-    r = requests.get(f"{PLEX_TV}/api/home/users", headers={**headers(client_id, token), "Accept": "application/xml"}, timeout=TIMEOUT)
+    r = requests.get(
+        f"{PLEX_TV}/api/home/users",
+        headers={**headers(client_id, token), "Accept": "application/xml"},
+        timeout=TIMEOUT,
+    )
     r.raise_for_status()
     users = [
         HomeUser(
@@ -183,15 +191,20 @@ def list_players(token: str, server: PlexServer) -> list[Device]:
     whatever is playing on the server right now (your phone shows up while it plays)."""
     found: dict[str, Device] = {}
     if (client := local_player(token)) is not None:
-        found[client.machineIdentifier] = Device(id=client.machineIdentifier, name=f"{client.title} (this computer)", product=client.product or "")
+        found[client.machineIdentifier] = Device(
+            id=client.machineIdentifier, name=f"{client.title} (this computer)", product=client.product or ""
+        )
     for device, _ in players(token):
         found.setdefault(device.id, device)
     for item in server.sessions():
         if item.type != "track" or item.player is None:
             continue
         p = item.player
-        found[p.machineIdentifier] = Device(id=p.machineIdentifier, name=p.title or p.product or "player",
-                                            product=f"{p.product or ''} · playing now".strip(" ·"))
+        found[p.machineIdentifier] = Device(
+            id=p.machineIdentifier,
+            name=p.title or p.product or "player",
+            product=f"{p.product or ''} · playing now".strip(" ·"),
+        )
     found.pop(plexapi.X_PLEX_IDENTIFIER, None)  # tamp itself
     return list(found.values())
 

@@ -64,17 +64,23 @@ class TampApp(App):
         except Exception as e:  # network, auth, no music library
             self.exit(1, message=f"tamp: {e}")
             return
-        self.player = Player(self.library, self.on_player_update, on_error=lambda m: self.notify(m, severity="warning"))
+        self.player = Player(
+            self.library, self.on_player_update, on_error=lambda m: self.notify(m, severity="warning")
+        )
         if not self.demo:
             self.player.restore_queue()
         socket = config.MPV_SOCKET.with_name("mpv-demo.sock") if self.demo else config.MPV_SOCKET
         mpv = Mpv(socket, self.on_mpv_event)
-        self.local = LocalOutput(self.library, mpv, self.player.changed, self.player.advanced, self.player.finished, self.loudness)
+        self.local = LocalOutput(
+            self.library, mpv, self.player.changed, self.player.advanced, self.player.finished, self.loudness
+        )
         await self.push_screen(MainScreen())
         try:
             await self.player.use(self.local)
         except MpvError as e:
-            self.notify(f"{e}: you can still browse and control other players (o)", severity="warning", timeout=10)
+            self.notify(
+                f"{e}: you can still browse and control other players (o)", severity="warning", timeout=10
+            )
         self._dirty = True
         self.set_interval(0.25, self._tick)
         if not self.demo and self.cfg.device_id != THIS_DEVICE.id:
@@ -96,7 +102,9 @@ class TampApp(App):
                 while True:
                     pin = await self.push_screen_wait(PinScreen(user.title, error)) if user.protected else ""
                     try:
-                        user_token = await asyncio.to_thread(plex.switch_user, cfg.client_id, token, user, pin)
+                        user_token = await asyncio.to_thread(
+                            plex.switch_user, cfg.client_id, token, user, pin
+                        )
                         break
                     except plex.WrongPin:
                         error = "wrong PIN, try again"
@@ -110,7 +118,9 @@ class TampApp(App):
         if resource is None:
             choice = 0
             if len(resources) > 1:
-                choice = max(0, await self.push_screen_wait(PickScreen("Which server?", server_rows(resources))))
+                choice = max(
+                    0, await self.push_screen_wait(PickScreen("Which server?", server_rows(resources)))
+                )
             resource = resources[choice]
         self.notify(f"connecting to {resource.name}…", timeout=3)
         self.server = await asyncio.to_thread(plex.connect, resource)
@@ -124,7 +134,9 @@ class TampApp(App):
                 rows = [Text(f"  {s.title}") for s in sections]
                 choice = max(0, await self.push_screen_wait(PickScreen("Which music library?", rows)))
             section_id = str(sections[choice].key)
-        self.cfg = replace(cfg, server_id=resource.clientIdentifier, server_name=resource.name, section_id=section_id)
+        self.cfg = replace(
+            cfg, server_id=resource.clientIdentifier, server_name=resource.name, section_id=section_id
+        )
         config.save(self.cfg)
         return await asyncio.to_thread(PlexLibrary, self.server, section_id)
 
@@ -133,7 +145,12 @@ class TampApp(App):
         if msg.get("event") == "client-message":
             args = msg.get("args") or []
             if len(args) == 2 and args[0] == "tamp" and args[1] in CLI_COMMANDS and self.player:
-                command = {"toggle": self.player.toggle, "next": self.player.next, "prev": self.player.prev, "stop": self.player.stop}[args[1]]
+                command = {
+                    "toggle": self.player.toggle,
+                    "next": self.player.next,
+                    "prev": self.player.prev,
+                    "stop": self.player.stop,
+                }[args[1]]
                 asyncio.get_running_loop().create_task(command())
             return
         if self.local and self.player and self.player.output is self.local:
@@ -161,7 +178,9 @@ class TampApp(App):
                 self._lyrics_cache[track.id] = await asyncio.to_thread(lib.lyrics, track)
             except Exception:
                 self._lyrics_cache[track.id] = None
-        self.current_lyrics = self._lyrics_cache[track.id] if self._shown_track == track.id else self.current_lyrics
+        self.current_lyrics = (
+            self._lyrics_cache[track.id] if self._shown_track == track.id else self.current_lyrics
+        )
         image = None
         with contextlib.suppress(Exception):
             image = await asyncio.to_thread(lib.art, track.thumb, 400)
@@ -174,7 +193,9 @@ class TampApp(App):
         self._dirty = True
 
     def _tick(self) -> None:
-        if isinstance(self.screen, MainScreen) and (self._dirty or (self.player and not self.player.state.paused)):
+        if isinstance(self.screen, MainScreen) and (
+            self._dirty or (self.player and not self.player.state.paused)
+        ):
             self._dirty = False
             self.screen.tick()
 
@@ -212,8 +233,12 @@ class TampApp(App):
             except Exception as e:
                 self.notify(f"couldn't list players: {e}", severity="warning")
         current = next((i for i, o in enumerate(options) if o[0] == self.cfg.device_id), 0)
-        rows = [Text.assemble(("  ● " if i == current else "  ○ ", fmt.GREEN), (name, fmt.FG), (f"  {desc}", fmt.DIM))
-                for i, (_, name, desc) in enumerate(options)]
+        rows = [
+            Text.assemble(
+                ("  ● " if i == current else "  ○ ", fmt.GREEN), (name, fmt.FG), (f"  {desc}", fmt.DIM)
+            )
+            for i, (_, name, desc) in enumerate(options)
+        ]
         choice = await self.push_screen_wait(Choose("Play on", rows, current))
         if choice >= 0:
             await self.switch_output(options[choice][0])
@@ -228,7 +253,9 @@ class TampApp(App):
             self.device_name = THIS_DEVICE.name
         else:
             try:
-                output = await asyncio.to_thread(plex.output_for, device_id, self.cfg.user_token, self.server, self.library)
+                output = await asyncio.to_thread(
+                    plex.output_for, device_id, self.cfg.user_token, self.server, self.library
+                )
             except Exception as e:
                 if not quiet:
                     self.notify(f"can't reach that player: {e}", severity="error")
@@ -237,7 +264,10 @@ class TampApp(App):
             await self.player.use(output, resume=resume and output.controllable)
             self.device_name = output.device.name
             if not output.controllable and not quiet:
-                self.notify("following this player: now playing and lyrics; it doesn't accept remote control", timeout=8)
+                self.notify(
+                    "following this player: now playing and lyrics; it doesn't accept remote control",
+                    timeout=8,
+                )
         self.cfg = replace(self.cfg, device_id=device_id)
         config.save(self.cfg)
         self._dirty = True
@@ -253,4 +283,4 @@ class TampApp(App):
                 await self.local.close()
 
 
-__all__ = ["TampApp", "RemoteOutput"]
+__all__ = ["RemoteOutput", "TampApp"]

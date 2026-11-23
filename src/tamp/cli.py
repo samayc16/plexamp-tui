@@ -20,15 +20,20 @@ def main(argv: list[str] | None = None) -> int:
     status = sub.add_parser("status", help="what's playing, one line (for tmux)")
     status.add_argument("--json", action="store_true", help="everything as JSON")
     status.add_argument("--width", type=int, default=50)
-    for name, text in (("toggle", "play / pause"), ("next", "next track"), ("prev", "previous track"), ("stop", "stop")):
+    for name, text in (
+        ("toggle", "play / pause"),
+        ("next", "next track"),
+        ("prev", "previous track"),
+        ("stop", "stop"),
+    ):
         sub.add_parser(name, help=f"{text} in the running tamp")
     sub.add_parser("logout", help="forget your Plex sign-in")
     args = parser.parse_args(argv)
 
     if args.command == "status":
-        from tamp.player import status_json, status_line
+        from tamp import status
 
-        print(status_json() if args.json else status_line(args.width))
+        print(status.as_json() if args.json else status.line(args.width))
         return 0
     if args.command in ("toggle", "next", "prev", "stop"):
         from tamp.mpv import send

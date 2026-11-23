@@ -64,7 +64,12 @@ class PlexLibrary:
     # ── conversions ──
     def _artist(self, a) -> Artist:
         self._items[str(a.ratingKey)] = a
-        return Artist(id=str(a.ratingKey), title=a.title, thumb=a.thumb, genres=tuple(g.tag for g in getattr(a, "genres", []) or []))
+        return Artist(
+            id=str(a.ratingKey),
+            title=a.title,
+            thumb=a.thumb,
+            genres=tuple(g.tag for g in getattr(a, "genres", []) or []),
+        )
 
     def _album(self, a) -> Album:
         self._items[str(a.ratingKey)] = a
@@ -142,7 +147,9 @@ class PlexLibrary:
         return [self._album(a) for a in self.section.recentlyAddedAlbums(maxresults=60)]
 
     def recently_played(self) -> list[Track]:
-        found = self.section.search(libtype="track", sort="lastViewedAt:desc", limit=60, filters={"lastViewedAt>>": "3650d"})
+        found = self.section.search(
+            libtype="track", sort="lastViewedAt:desc", limit=60, filters={"lastViewedAt>>": "3650d"}
+        )
         return [self._track(t) for t in found]
 
     def search(self, query: str) -> SearchResults:
@@ -198,7 +205,9 @@ class PlexLibrary:
         t = self.server.fetchItem(int(track.id))
         streams = sorted(t.lyricStreams(), key=lambda s: not s.timed)
         for stream in streams:
-            r = self.server._session.get(self.server.url(stream.key), headers=self.server._headers(), timeout=10)
+            r = self.server._session.get(
+                self.server.url(stream.key), headers=self.server._headers(), timeout=10
+            )
             if not r.ok or not r.text.strip():
                 continue
             return _parse_plex_lyrics(r.text)
@@ -207,10 +216,14 @@ class PlexLibrary:
     def art(self, thumb: str | None, size: int) -> bytes | None:
         if not thumb:
             return None
-        cache = config.ART_DIR / (hashlib.sha1(f"{self.server.machineIdentifier}{thumb}{size}".encode()).hexdigest() + ".jpg")
+        cache = config.ART_DIR / (
+            hashlib.sha1(f"{self.server.machineIdentifier}{thumb}{size}".encode()).hexdigest() + ".jpg"
+        )
         if cache.exists():
             return cache.read_bytes()
-        url = self.server.url(f"/photo/:/transcode?width={size}&height={size}&minSize=1&upscale=1&url={thumb}")
+        url = self.server.url(
+            f"/photo/:/transcode?width={size}&height={size}&minSize=1&upscale=1&url={thumb}"
+        )
         r = self.server._session.get(url, headers=self.server._headers(), timeout=10)
         if not r.ok:
             return None

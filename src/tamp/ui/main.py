@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Input, OptionList, Static
@@ -49,7 +50,7 @@ class Page:
 class Prompt(ModalScreen[str]):
     """Ask for a line of text (playlist name)."""
 
-    BINDINGS = [Binding("escape", "cancel", "cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "cancel")]
 
     def __init__(self, question: str, value: str = "") -> None:
         super().__init__()
@@ -70,7 +71,7 @@ class Prompt(ModalScreen[str]):
 class Choose(ModalScreen[int]):
     """Pick one of a few options; dismisses with the index or -1."""
 
-    BINDINGS = [Binding("escape,q", "cancel", "cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape,q", "cancel", "cancel")]
 
     def __init__(self, title: str, rows: list[Text], current: int = 0) -> None:
         super().__init__()
@@ -79,7 +80,9 @@ class Choose(ModalScreen[int]):
     def compose(self) -> ComposeResult:
         with Vertical(id="choose"):
             yield Static(Text(self.title_text, style=f"bold {fmt.PINK}"))
-            yield OptionList(*[Option(r, id=str(i)) for i, r in enumerate(self.rows)], markup=False, id="choose-list")
+            yield OptionList(
+                *[Option(r, id=str(i)) for i, r in enumerate(self.rows)], markup=False, id="choose-list"
+            )
 
     def on_mount(self) -> None:
         self.query_one(OptionList).highlighted = self.current
@@ -99,7 +102,7 @@ HELP = """[b]play[/b]  enter play / open   a add to queue   N play next   s shuf
 
 
 class MainScreen(Screen):
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("space", "toggle", "play/pause"),
         Binding("n", "next", "next"),
         Binding("p", "prev", "prev"),
@@ -133,7 +136,10 @@ class MainScreen(Screen):
         Binding("k", "cursor(-1)", "up", show=False),
         Binding("g", "cursor_edge('top')", "top", show=False),
         Binding("G", "cursor_edge('bottom')", "bottom", show=False),
-        *[Binding(str(i + 1), f"section('{key}')", label, show=False) for i, (key, label) in enumerate(SECTIONS)],
+        *[
+            Binding(str(i + 1), f"section('{key}')", label, show=False)
+            for i, (key, label) in enumerate(SECTIONS)
+        ],
     ]
 
     def __init__(self) -> None:
@@ -147,7 +153,9 @@ class MainScreen(Screen):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
-            yield OptionList(*[Option(Text(label), id=key) for key, label in SECTIONS], markup=False, id="nav")
+            yield OptionList(
+                *[Option(Text(label), id=key) for key, label in SECTIONS], markup=False, id="nav"
+            )
             with Vertical(id="center"):
                 yield Static("", id="crumb")
                 yield Input(placeholder="search artists, albums, tracks, playlists", id="search")
@@ -181,15 +189,16 @@ class MainScreen(Screen):
             return
         width = max(30, browser.size.width - 4)
         playing = self.tamp.player.queue.track if self.tamp.player else None
-        rows = []
+        rows: list[Option | None] = []
         for i, e in enumerate(page.entries):
             if e.kind == "heading":
-                rows.append(None if i else None)
+                if rows:
+                    rows.append(None)  # a separator line before every heading but the first
                 rows.append(Option(fmt.heading(e.label), disabled=True))
                 continue
             rows.append(Option(self._row(e, width, page, playing), id=str(i)))
         browser.clear_options()
-        browser.add_options([r for r in rows if r is not None] if rows and rows[0] is None else rows)
+        browser.add_options(rows)
         if browser.option_count:
             browser.highlighted = min(page.highlighted, browser.option_count - 1)
         crumb = " › ".join(p.title for p in self.pages)
@@ -201,7 +210,8 @@ class MainScreen(Screen):
             is_queue = page.kind == "queue"
             number = page.tracks.index(t) + 1 if is_queue and t in page.tracks else None
             now = (is_queue and number is not None and number - 1 == self.tamp.player.queue.current) or (
-                not is_queue and playing is not None and playing.id == t.id)
+                not is_queue and playing is not None and playing.id == t.id
+            )
             return fmt.track_row(t, width, playing=now, show_album=page.kind not in ("album",), number=number)
         if e.kind == "artist":
             return fmt.artist_row(e.value, width)  # type: ignore[arg-type]
@@ -209,7 +219,11 @@ class MainScreen(Screen):
             return fmt.album_row(e.value, width, show_artist=page.kind != "artist")  # type: ignore[arg-type]
         if e.kind in ("playlist", "station"):
             return fmt.playlist_row(e.value, width)  # type: ignore[arg-type]
-        icon, colour = {"play": ("▶", fmt.GREEN), "shuffle": ("⇄", fmt.YELLOW), "radio": ("✦", fmt.ORANGE)}.get(str(e.value), ("•", fmt.FG))
+        icon, colour = {
+            "play": ("▶", fmt.GREEN),
+            "shuffle": ("⇄", fmt.YELLOW),
+            "radio": ("✦", fmt.ORANGE),
+        }.get(str(e.value), ("•", fmt.FG))
         return fmt.action_row(icon, e.label, colour)
 
     def push(self, page: Page, replace_all: bool = False) -> None:
@@ -249,13 +263,20 @@ class MainScreen(Screen):
         elif kind == "artist":
             albums, tracks = items
             page.tracks = tracks
-            page.entries = [Entry("action", "play", "Play all"), Entry("action", "shuffle", "Shuffle"),
-                            Entry("action", "radio", "Artist radio")]
+            page.entries = [
+                Entry("action", "play", "Play all"),
+                Entry("action", "shuffle", "Shuffle"),
+                Entry("action", "radio", "Artist radio"),
+            ]
             page.entries += [Entry("heading", label="Albums")] + [Entry("album", a) for a in albums]
         elif kind == "search":
             r = items
-            for label, entries in (("Artists", [Entry("artist", a) for a in r.artists]), ("Albums", [Entry("album", a) for a in r.albums]),
-                                   ("Tracks", [Entry("track", t) for t in r.tracks]), ("Playlists", [Entry("playlist", p) for p in r.playlists])):
+            for label, entries in (
+                ("Artists", [Entry("artist", a) for a in r.artists]),
+                ("Albums", [Entry("album", a) for a in r.albums]),
+                ("Tracks", [Entry("track", t) for t in r.tracks]),
+                ("Playlists", [Entry("playlist", p) for p in r.playlists]),
+            ):
                 if entries:
                     page.entries += [Entry("heading", label=label)] + entries
             page.tracks = list(r.tracks)
@@ -523,7 +544,9 @@ class MainScreen(Screen):
                 except Exception as e:
                     self.notify(f"couldn't save: {e}", severity="error")
 
-        self.app.push_screen(Prompt("Save the queue as a playlist named:", self.tamp.player.queue.source), save)
+        self.app.push_screen(
+            Prompt("Save the queue as a playlist named:", self.tamp.player.queue.source), save
+        )
 
     def action_add_to_playlist(self) -> None:
         self.run_worker(self._add_to_playlist(), exclusive=True)
@@ -582,8 +605,12 @@ class MainScreen(Screen):
     def replace_track(self, track: Track) -> None:
         """Show a track's new details (liked) wherever it's listed."""
         for page in self.pages:
-            page.entries = [Entry(e.kind, track, e.label) if e.kind == "track" and getattr(e.value, "id", None) == track.id else e
-                            for e in page.entries]
+            page.entries = [
+                Entry(e.kind, track, e.label)
+                if e.kind == "track" and getattr(e.value, "id", None) == track.id
+                else e
+                for e in page.entries
+            ]
             page.tracks = [track if t.id == track.id else t for t in page.tracks]
         highlighted = self.query_one("#browser", OptionList).highlighted or 0
         if self.page:

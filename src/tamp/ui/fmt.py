@@ -24,7 +24,9 @@ def fit(text: str, width: int) -> str:
     return text.ljust(width) if len(text) <= width else text[: width - 1] + "…"
 
 
-def track_row(t: Track, width: int, playing: bool = False, show_album: bool = True, number: int | None = None) -> Text:
+def track_row(
+    t: Track, width: int, playing: bool = False, show_album: bool = True, number: int | None = None
+) -> Text:
     marker = Text("▶ " if playing else "  ", style=GREEN)
     num = f"{number if number is not None else (t.index or ''):>3} "
     like = "♥" if t.liked else " "
@@ -51,7 +53,9 @@ def track_row(t: Track, width: int, playing: bool = False, show_album: bool = Tr
 
 def artist_row(a: Artist, width: int) -> Text:
     genres = ", ".join(a.genres[:2])
-    return Text.assemble(("  ◉ ", PURPLE), (fit(a.title, max(10, width - 6 - len(genres))), FG), (genres, DIM))
+    return Text.assemble(
+        ("  ◉ ", PURPLE), (fit(a.title, max(10, width - 6 - len(genres))), FG), (genres, DIM)
+    )
 
 
 def album_row(a: Album, width: int, show_artist: bool = True) -> Text:

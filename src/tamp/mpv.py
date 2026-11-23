@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import itertools
 import hashlib
+import itertools
 import json
 import os
 import shutil

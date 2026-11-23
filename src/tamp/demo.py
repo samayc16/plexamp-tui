@@ -15,7 +15,11 @@ from tamp.models import Album, Artist, Playlist, SearchResults, Stream, Track
 
 _CATALOGUE = {
     "Aurora Drift": [
-        ("Night Signals", 2021, ["Low Orbit", "Static Bloom", "Glass Harbour", "Neon Tide", "Afterglow Radio"]),
+        (
+            "Night Signals",
+            2021,
+            ["Low Orbit", "Static Bloom", "Glass Harbour", "Neon Tide", "Afterglow Radio"],
+        ),
         ("Weightless", 2024, ["Undertow", "Paper Moons", "Satellite Hearts", "Slow Fade"]),
     ],
     "The Copper Lanterns": [
@@ -30,7 +34,14 @@ _CATALOGUE = {
     ],
 }
 
-_PALETTE = [(255, 97, 136), (169, 220, 118), (255, 216, 102), (120, 220, 232), (171, 157, 242), (252, 152, 103)]
+_PALETTE = [
+    (255, 97, 136),
+    (169, 220, 118),
+    (255, 216, 102),
+    (120, 220, 232),
+    (171, 157, 242),
+    (252, 152, 103),
+]
 
 _LYRICS = """[00:00.50]Counting the lights on the harbour wall
 [00:04.00]every one a small slow star
@@ -62,7 +73,14 @@ class DemoLibrary:
             artist_obj = Artist(id=_id(artist), title=artist, thumb=f"art:{a_i}:0")
             self._artists.append(artist_obj)
             for b_i, (title, year, songs) in enumerate(albums):
-                album = Album(id=_id(artist, title), title=title, artist=artist, year=year, thumb=f"art:{a_i}:{b_i}", track_count=len(songs))
+                album = Album(
+                    id=_id(artist, title),
+                    title=title,
+                    artist=artist,
+                    year=year,
+                    thumb=f"art:{a_i}:{b_i}",
+                    track_count=len(songs),
+                )
                 self._albums.append(album)
                 self._tracks[album.id] = [
                     Track(
@@ -83,12 +101,18 @@ class DemoLibrary:
                 ]
         everything = self._all_tracks()
         self._playlists = {
-            _id("playlist", "Late night"): [t for t in everything if t.artist in ("Aurora Drift", "Mono Lake")][:9],
-            _id("playlist", "Road trip"): [t for t in everything if t.artist in ("The Copper Lanterns", "Fjordline")],
+            _id("playlist", "Late night"): [
+                t for t in everything if t.artist in ("Aurora Drift", "Mono Lake")
+            ][:9],
+            _id("playlist", "Road trip"): [
+                t for t in everything if t.artist in ("The Copper Lanterns", "Fjordline")
+            ],
         }
 
     def _all_tracks(self) -> list[Track]:
-        return [replace(t, rating=self._ratings.get(t.id, t.rating)) for ts in self._tracks.values() for t in ts]
+        return [
+            replace(t, rating=self._ratings.get(t.id, t.rating)) for ts in self._tracks.values() for t in ts
+        ]
 
     def artists(self) -> list[Artist]:
         return list(self._artists)
@@ -105,7 +129,10 @@ class DemoLibrary:
     def playlists(self) -> list[Playlist]:
         liked = [t for t in self._all_tracks() if t.liked]
         result = [Playlist(id=_id("liked"), title="❤ Liked", count=len(liked), smart=True)]
-        result += [Playlist(id=pid, title=pid.split("-")[-1].replace("_", " ").capitalize(), count=len(ts)) for pid, ts in self._playlists.items()]
+        result += [
+            Playlist(id=pid, title=pid.split("-")[-1].replace("_", " ").capitalize(), count=len(ts))
+            for pid, ts in self._playlists.items()
+        ]
         return result
 
     def playlist_tracks(self, playlist: Playlist) -> list[Track]:

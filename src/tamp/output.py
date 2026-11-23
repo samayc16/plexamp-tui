@@ -110,7 +110,13 @@ class LocalOutput:
         if queue.track is None:
             await self.stop()
             return
-        self.state = Playback(track=queue.track, duration_ms=queue.track.duration_ms, paused=False, volume=self.state.volume, index=queue.current)
+        self.state = Playback(
+            track=queue.track,
+            duration_ms=queue.track.duration_ms,
+            paused=False,
+            volume=self.state.volume,
+            index=queue.current,
+        )
         self.on_change(self.state)
         await self._append(queue.track, "replace")
         self._loaded = [queue.track.id]
@@ -186,7 +192,14 @@ class RemoteOutput:
 
     POLL_S = 1.0
 
-    def __init__(self, device: Device, server, library, client=None, on_change: Callable[[Playback], None] | None = None) -> None:
+    def __init__(
+        self,
+        device: Device,
+        server,
+        library,
+        client=None,
+        on_change: Callable[[Playback], None] | None = None,
+    ) -> None:
         self.device = device
         self.server = server
         self.library = library
@@ -211,7 +224,9 @@ class RemoteOutput:
 
     def _session(self):
         for item in self.server.sessions():
-            player = getattr(item, "player", None) or (item.players[0] if getattr(item, "players", None) else None)
+            player = getattr(item, "player", None) or (
+                item.players[0] if getattr(item, "players", None) else None
+            )
             if player is not None and player.machineIdentifier == self.device.id and item.type == "track":
                 return item, player
         return None, None
@@ -235,8 +250,14 @@ class RemoteOutput:
                     position = self._seen[1] + (int((now - self._seen[2]) * 1000) if playing else 0)
                     position = min(position, track.duration_ms or position)
                     index = next((i for i, t in enumerate(self.queue.tracks) if t.id == track.id), -1)
-                    self.state = Playback(track=track, position_ms=position, duration_ms=track.duration_ms,
-                                          paused=not playing, volume=self.state.volume, index=index)
+                    self.state = Playback(
+                        track=track,
+                        position_ms=position,
+                        duration_ms=track.duration_ms,
+                        paused=not playing,
+                        volume=self.state.volume,
+                        index=index,
+                    )
                 self.on_change(self.state)
             except Exception:  # a flaky network shouldn't take the UI down; try again next second
                 pass
@@ -253,7 +274,9 @@ class RemoteOutput:
 
         def start() -> None:
             items = [self.server.fetchItem(int(t.id)) for t in queue.tracks[:200]]
-            play_queue = PlayQueue.create(self.server, items, startItem=items[min(queue.current, len(items) - 1)])
+            play_queue = PlayQueue.create(
+                self.server, items, startItem=items[min(queue.current, len(items) - 1)]
+            )
             client.playMedia(play_queue)
 
         await asyncio.to_thread(start)

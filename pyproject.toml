@@ -34,3 +34,8 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint]
+# Network and UI boundaries catch everything on purpose: a dropped connection or a player
+# that misbehaves should become a message, never take the music down with it.
+ignore = ["BLE001", "S110"]

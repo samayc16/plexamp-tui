@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import time
 from collections.abc import Callable
 from dataclasses import asdict, replace
@@ -21,8 +20,12 @@ SCROBBLE_AT = 0.9  # Plex counts a play at 90%
 
 
 class Player:
-    def __init__(self, library: Library, on_update: Callable[[Playback, Queue], None],
-                 on_error: Callable[[str], None] = lambda _m: None) -> None:
+    def __init__(
+        self,
+        library: Library,
+        on_update: Callable[[Playback, Queue], None],
+        on_error: Callable[[str], None] = lambda _m: None,
+    ) -> None:
         self.library = library
         self.on_update = on_update
         self.on_error = on_error
@@ -87,7 +90,9 @@ class Player:
         self.queue = self.queue.advanced()
         if isinstance(self.output, LocalOutput):
             self.output.queue = self.queue
-            self.output.state = replace(self.output.state, track=self.queue.track, index=self.queue.current, position_ms=0)
+            self.output.state = replace(
+                self.output.state, track=self.queue.track, index=self.queue.current, position_ms=0
+            )
             asyncio.get_running_loop().create_task(self.output.queue_changed(self.queue))
         self._save_queue()
         self.changed(self.output.state if self.output else self.state)
@@ -106,7 +111,9 @@ class Player:
         if now - self._reported_at >= REPORT_EVERY_S:
             self._reported_at = now
             status = "paused" if state.paused else "playing"
-            asyncio.get_running_loop().create_task(self._background(self.library.report, track, status, state.position_ms))
+            asyncio.get_running_loop().create_task(
+                self._background(self.library.report, track, status, state.position_ms)
+            )
 
     def _scrobble(self, track: Track) -> None:
         if self._scrobbled == track.id or self.remote:
@@ -236,8 +243,12 @@ class Player:
 
     # ── persistence ──
     def _save_queue(self) -> None:
-        data = {"current": self.queue.current, "repeat": self.queue.repeat, "source": self.queue.source,
-                "tracks": [asdict(t) for t in self.queue.tracks[:500]]}
+        data = {
+            "current": self.queue.current,
+            "repeat": self.queue.repeat,
+            "source": self.queue.source,
+            "tracks": [asdict(t) for t in self.queue.tracks[:500]],
+        }
         with contextlib.suppress(OSError):
             config.write_state(config.QUEUE_FILE, data)
 
@@ -248,8 +259,12 @@ class Player:
         except TypeError:  # saved by an older version
             return
         if tracks:
-            self.queue = Queue(tracks=tracks, current=min(int(data.get("current", 0)), len(tracks) - 1),
-                               repeat=data.get("repeat", "off"), source=data.get("source", ""))
+            self.queue = Queue(
+                tracks=tracks,
+                current=min(int(data.get("current", 0)), len(tracks) - 1),
+                repeat=data.get("repeat", "off"),
+                source=data.get("source", ""),
+            )
 
     def _write_status(self) -> None:
         s, t = self.state, self.state.track
@@ -270,29 +285,3 @@ class Player:
     def clear_status(self) -> None:
         with contextlib.suppress(OSError):
             config.STATUS_FILE.unlink()
-
-
-def status_line(max_width: int = 50) -> str:
-    """For `tamp status` / the tmux status bar: '▶ Title · Artist', or '' when nothing plays."""
-    data = config.read_state(config.STATUS_FILE)
-    if not data or data.get("state") == "stopped" or not _alive(data.get("pid")):
-        return ""
-    icon = "▶" if data.get("state") == "playing" else "⏸"
-    text = f"{data.get('title', '')} · {data.get('artist', '')}"
-    if len(text) > max_width:
-        text = text[: max_width - 1] + "…"
-    return f"{icon} {text}"
-
-
-def _alive(pid: object) -> bool:
-    import os
-
-    try:
-        os.kill(int(pid), 0)  # type: ignore[arg-type]
-    except (OSError, TypeError, ValueError):
-        return False
-    return True
-
-
-def status_json() -> str:
-    return json.dumps(config.read_state(config.STATUS_FILE))

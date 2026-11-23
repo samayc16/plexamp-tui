@@ -65,7 +65,9 @@ def save(config: Config) -> None:
 
 
 def signed_out(config: Config) -> Config:
-    return replace(config, account_token="", user_token="", user_title="", server_id="", server_name="", section_id="")
+    return replace(
+        config, account_token="", user_token="", user_title="", server_id="", server_name="", section_id=""
+    )
 
 
 def write_state(path: Path, data: dict) -> None:
