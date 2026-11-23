@@ -160,11 +160,11 @@ class DemoLibrary:
         ]
         return [(k, v) for k, v in rows if v]
 
-    def artists(self) -> list[Artist]:
-        return list(self._artists)
+    def artists(self, start: int = 0) -> list[Artist]:
+        return list(self._artists)[start:]
 
-    def albums(self, artist: Artist | None = None) -> list[Album]:
-        return [a for a in self._albums if artist is None or a.artist == artist.title]
+    def albums(self, artist: Artist | None = None, start: int = 0) -> list[Album]:
+        return [a for a in self._albums if artist is None or a.artist == artist.title][start:]
 
     def tracks(self, album: Album) -> list[Track]:
         return [replace(t, rating=self._ratings.get(t.id, t.rating)) for t in self._tracks.get(album.id, [])]

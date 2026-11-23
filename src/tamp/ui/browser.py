@@ -38,6 +38,8 @@ class Page:
     header: Header | None = None
     highlighted: int = 0
     subject: object = None  # the album / artist / playlist the page is about
+    loader: object = None  # start -> next page of items, for "Load more…"
+    entry_kind: str = ""
 
 
 def track_block(page: Page, index: int) -> tuple[list[Track], int]:

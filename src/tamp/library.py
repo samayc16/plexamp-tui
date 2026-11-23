@@ -24,8 +24,8 @@ class Library(Protocol):
     def liked(self) -> list[Track]: ...
     def artist_overview(self, artist: Artist) -> ArtistOverview: ...
     def details(self, track: Track) -> list[tuple[str, str]]: ...
-    def artists(self) -> list[Artist]: ...
-    def albums(self, artist: Artist | None = None) -> list[Album]: ...
+    def artists(self, start: int = 0) -> list[Artist]: ...
+    def albums(self, artist: Artist | None = None, start: int = 0) -> list[Album]: ...
     def tracks(self, album: Album) -> list[Track]: ...
     def artist_tracks(self, artist: Artist) -> list[Track]: ...
     def playlists(self) -> list[Playlist]: ...
@@ -56,10 +56,17 @@ def _int(value: object) -> int | None:
         return None
 
 
+HUB_ITEMS = 14
+PAGE = 300  # big libraries are browsed a page at a time ("Load more…")
+LIST_LIMIT = 1000
+SERVER_TIMEOUT = 60  # a 60,000-album library can take a while to sort
+
+
 class PlexLibrary:
     """One music section of one Plex Media Server."""
 
     def __init__(self, server: PlexServer, section_id: str = "") -> None:
+        server._timeout = max(getattr(server, "_timeout", 0) or 0, SERVER_TIMEOUT)
         self.server = server
         sections = [s for s in server.library.sections() if s.type == "artist"]
         if not sections:
@@ -135,19 +142,21 @@ class PlexLibrary:
 
     # ── browsing ──
     def home(self) -> list[Hub]:
-        """The section's hubs, the rows Plexamp's home is made of."""
+        """The section's hubs, the rows Plexamp's home is made of (including Mixes for you).
+        Only the first items of each hub come back: a hub can hold tens of thousands."""
         convert = {"album": self._album, "track": self._track, "artist": self._artist}
         hubs = []
-        for hub in self.section.hubs():
+        for hub in self.section.hubs(count=HUB_ITEMS, includeMyMixes=1):
             try:
-                items = hub.items()[:14]
+                items = list(hub._partialItems)[:HUB_ITEMS]  # never hub.items(): that loads them all
             except Exception:
                 continue
             kind = "station" if "station" in (getattr(hub, "context", "") or "") else hub.type
             if kind in convert:
                 converted = [convert[kind](i) for i in items if getattr(i, "type", "") == kind]
-            elif kind in ("playlist", "station"):
-                converted = [self._playlist(i, radio=kind == "station") for i in items]
+            elif kind in ("playlist", "station", "mix"):
+                converted = [self._playlist(i, radio=kind != "playlist") for i in items]
+                kind = "station" if kind == "mix" else kind
             else:
                 continue
             if converted:
@@ -163,7 +172,9 @@ class PlexLibrary:
     def liked(self) -> list[Track]:
         return [
             self._track(t)
-            for t in self.section.searchTracks(filters={"userRating": 10}, sort="lastRatedAt:desc")
+            for t in self.section.searchTracks(
+                filters={"userRating": 10}, sort="lastRatedAt:desc", maxresults=LIST_LIMIT
+            )
         ]
 
     def artist_overview(self, artist: Artist) -> ArtistOverview:
@@ -238,14 +249,20 @@ class PlexLibrary:
         ]
         return [(k, v) for k, v in rows if v]
 
-    def artists(self) -> list[Artist]:
-        return [self._artist(a) for a in self.section.all(libtype="artist", sort="titleSort")]
+    def artists(self, start: int = 0) -> list[Artist]:
+        found = self.section.search(
+            libtype="artist", sort="titleSort", container_start=start, container_size=PAGE, maxresults=PAGE
+        )
+        return [self._artist(a) for a in found]
 
-    def albums(self, artist: Artist | None = None) -> list[Album]:
+    def albums(self, artist: Artist | None = None, start: int = 0) -> list[Album]:
         if artist:
             albums = self._obj(artist.id).albums()
             return [self._album(a) for a in sorted(albums, key=lambda a: a.year or 0, reverse=True)]
-        return [self._album(a) for a in self.section.albums(sort="artist.titleSort,year")]
+        found = self.section.search(
+            libtype="album", sort="titleSort", container_start=start, container_size=PAGE, maxresults=PAGE
+        )
+        return [self._album(a) for a in found]
 
     def tracks(self, album: Album) -> list[Track]:
         return [self._track(t) for t in self._obj(album.id).tracks()]

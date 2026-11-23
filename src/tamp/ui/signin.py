@@ -206,3 +206,19 @@ def server_rows(servers: list) -> list[Text]:
         )
         for s in servers
     ]
+
+
+class LoadingScreen(Screen[None]):
+    """Something to look at while the server answers."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        from textual.widgets import LoadingIndicator
+
+        with Vertical(id="loading"):
+            yield Static(Text("tamp", style=f"bold {PINK}"), id="loading-title")
+            yield Static(Text(self.message, style=DIM))
+            yield LoadingIndicator()

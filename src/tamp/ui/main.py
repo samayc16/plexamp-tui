@@ -297,10 +297,20 @@ class MainScreen(Screen):
         if key == "queue":
             self.push(pages.queue(self.tamp.player.queue), replace_all=True)
             return
+        if key == "home":
+            await self.open_home()
+            return
         loaders = {
-            "home": ("Home", pages.home, lib.home),
-            "artists": ("Artists", lambda r: pages.listing("Artists", "artists", r), lib.artists),
-            "albums": ("Albums", lambda r: pages.listing("Albums", "albums", r), lib.albums),
+            "artists": (
+                "Artists",
+                lambda r: self.paged(pages.listing("Artists", "artists", r), lib.artists),
+                lib.artists,
+            ),
+            "albums": (
+                "Albums",
+                lambda r: self.paged(pages.listing("Albums", "albums", r), lib.albums),
+                lib.albums,
+            ),
             "playlists": ("Playlists", lambda r: pages.listing("Playlists", "playlists", r), lib.playlists),
             "stations": ("Stations", lambda r: pages.listing("Stations", "stations", r), lib.stations),
             "recent": (
@@ -312,6 +322,44 @@ class MainScreen(Screen):
         }
         title, build, fn = loaders[key]
         await self.load(title, build, fn, replace_all=True)
+
+    @staticmethod
+    def paged(page: Page, fn) -> Page:
+        page.loader = lambda start: fn(start=start)
+        return page
+
+    async def open_home(self) -> None:
+        """Last session's home at once (if any), then the fresh one when the server answers."""
+        app = self.tamp
+        cached = app.cached_home()
+        shown = None
+        if cached:
+            shown = pages.home(cached)
+            self.push(shown, replace_all=True)
+        try:
+            hubs = await asyncio.to_thread(app.library.home)
+        except Exception as e:
+            if shown is None:
+                self.notify(f"Home: {e}", severity="error")
+            return
+        app.store_home(hubs)
+        if shown is None:
+            self.push(pages.home(hubs), replace_all=True)
+        elif self.page is shown:  # still looking at it: swap in the fresh one, keep the cursor
+            fresh = pages.home(hubs)
+            fresh.highlighted = self.query_one("#browser", Browser).highlighted or 0
+            self.pages[-1] = fresh
+            self.render_page()
+
+    async def load_more(self) -> None:
+        page = self.page
+        if page is None or page.loader is None:
+            return
+        start = sum(1 for e in page.entries if e.kind == page.entry_kind)
+        self.query_one("#crumb", Static).update(Text(f" {page.title} … loading more", style=fmt.DIM))
+        items = await asyncio.to_thread(page.loader, start)
+        page.highlighted = pages.extend(page, items)
+        self.render_page()
 
     def refresh_queue_page(self) -> None:
         """Rebuild the queue page only when the queue itself changed, not on every tick."""
@@ -385,6 +433,9 @@ class MainScreen(Screen):
     async def run_action(self, action: str) -> None:
         page, lib, player = self.page, self.tamp.library, self.tamp.player
         if page is None:
+            return
+        if action == "more":
+            await self.load_more()
             return
         if action == "play":
             await player.play(all_tracks(page), 0, source=page.source)

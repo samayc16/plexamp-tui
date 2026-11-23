@@ -234,3 +234,13 @@ ContextMenu {
     height: 1;
     dock: bottom;
 }
+
+#loading {
+    align: center middle;
+    height: 1fr;
+}
+
+#loading LoadingIndicator {
+    height: 3;
+    color: #ff6188;
+}

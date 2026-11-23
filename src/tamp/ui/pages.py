@@ -47,9 +47,26 @@ def listing(title: str, kind: str, items: list) -> Page:
         "playlists": "playlist",
         "stations": "station",
     }[kind]
-    page = Page(title=title, kind=kind, source=title)
+    page = Page(title=title, kind=kind, source=title, entry_kind=entry_kind)
     page.entries = [Entry(entry_kind, item) for item in items] or [Entry("heading", label="nothing here yet")]
+    if len(items) >= PAGE_SIZE:
+        page.entries.append(MORE)
     return page
+
+
+PAGE_SIZE = 300
+MORE = Entry("action", "more", "Load more…   (or / to search everything)")
+
+
+def extend(page: Page, items: list) -> int:
+    """Append the next page of a listing; returns the index of the first new row."""
+    if page.entries and page.entries[-1] == MORE:
+        page.entries.pop()
+    first = len(page.entries)
+    page.entries += [Entry(page.entry_kind, item) for item in items]
+    if len(items) >= PAGE_SIZE:
+        page.entries.append(MORE)
+    return first
 
 
 def tracks(

@@ -24,7 +24,7 @@ from tamp.ui import fmt
 from tamp.ui.main import MainScreen, guarded
 from tamp.ui.menus import Choose
 from tamp.ui.nowplaying import NowPlaying, PlayerScreen
-from tamp.ui.signin import PickScreen, PinScreen, SignInScreen, server_rows, user_rows
+from tamp.ui.signin import LoadingScreen, PickScreen, PinScreen, SignInScreen, server_rows, user_rows
 
 CLI_COMMANDS = {"toggle", "next", "prev", "stop"}
 
@@ -102,9 +102,9 @@ class TampApp(App):
                 choice = await self.push_screen_wait(PickScreen("Who's listening?", user_rows(users)))
                 user = users[max(0, choice)]
             user_token, error = token, ""
-            while user and not user.admin:
+            while user and (user.protected or not user.admin):
                 pin = ""
-                if user.protected:
+                if user.protected:  # the admin too, like Plexamp
                     pin = await self.push_screen_wait(PinScreen(user.title, error))
                     if not pin:  # escape: pick someone else
                         choice = await self.push_screen_wait(PickScreen("Who's listening?", user_rows(users)))
@@ -129,7 +129,7 @@ class TampApp(App):
                     0, await self.push_screen_wait(PickScreen("Which server?", server_rows(resources)))
                 )
             resource = resources[choice]
-        self.notify(f"connecting to {resource.name}…", timeout=3)
+        await self.push_screen(LoadingScreen(f"connecting to {resource.name}…"))
         self.server = await asyncio.to_thread(plex.connect, resource)
         sections = await asyncio.to_thread(plex.music_sections, self.server)
         if not sections:
@@ -145,7 +145,10 @@ class TampApp(App):
             cfg, server_id=resource.clientIdentifier, server_name=resource.name, section_id=section_id
         )
         config.save(self.cfg)
-        return await asyncio.to_thread(PlexLibrary, self.server, section_id)
+        library = await asyncio.to_thread(PlexLibrary, self.server, section_id)
+        if isinstance(self.screen, LoadingScreen):
+            self.pop_screen()
+        return library
 
     # ── events ──
     def on_mpv_event(self, msg: dict) -> None:
@@ -165,6 +168,20 @@ class TampApp(App):
             return
         if self.local and self.player and self.player.output is self.local:
             self.local.handle_event(msg)
+
+    def _home_key(self) -> str:
+        return "demo" if self.demo else f"{self.cfg.user_title}:{self.cfg.server_id}:{self.cfg.section_id}"
+
+    def cached_home(self):
+        from tamp import cache
+
+        return None if self.demo else cache.load_home(self._home_key())
+
+    def store_home(self, hubs) -> None:
+        from tamp import cache
+
+        if not self.demo:
+            cache.save_home(self._home_key(), hubs)
 
     @property
     def now_track(self) -> Track | None:
