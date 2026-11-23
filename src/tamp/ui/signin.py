@@ -1,0 +1,178 @@
+"""First-run screens: sign in with a link (or QR code, or plex.tv/link code), pick a Home user
+(PIN if they have one), pick a server and music library. Each screen dismisses with its result."""
+
+from __future__ import annotations
+
+import asyncio
+
+import qrcode
+from rich.style import Style
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Center, Vertical
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Footer, Input, OptionList, Static
+from textual.widgets.option_list import Option
+
+from tamp import plex
+from tamp.ui.fmt import CYAN, DIM, FG, GREEN, PINK, YELLOW
+
+
+def qr_text(data: str) -> Text:
+    """A scannable QR code in half-blocks: dark modules on a light quiet zone."""
+    qr = qrcode.QRCode(border=2, error_correction=qrcode.constants.ERROR_CORRECT_L)
+    qr.add_data(data)
+    qr.make(fit=True)
+    matrix = qr.get_matrix()
+    if len(matrix) % 2:
+        matrix.append([False] * len(matrix[0]))
+    dark, light = "#000000", "#ffffff"
+    text = Text()
+    for y in range(0, len(matrix), 2):
+        for x in range(len(matrix[0])):
+            top = dark if matrix[y][x] else light
+            bottom = dark if matrix[y + 1][x] else light
+            text.append("▀", Style(color=top, bgcolor=bottom))
+        if y + 2 < len(matrix):
+            text.append("\n")
+    return text
+
+
+class SignInScreen(Screen[str]):
+    """Dismisses with the plex.tv account token."""
+
+    BINDINGS = [
+        Binding("c", "copy", "copy link"),
+        Binding("o", "open", "open in browser"),
+        Binding("n", "restart", "new code"),
+        Binding("q,escape", "app.quit", "quit"),
+    ]
+
+    def __init__(self, client_id: str) -> None:
+        super().__init__()
+        self.client_id = client_id
+        self.login: plex.Login | None = None
+        self._polling = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="signin"):
+            yield Static(Text("tamp", style=f"bold {PINK}") + Text("  ·  sign in to Plex", style=FG), id="signin-title")
+            yield Static("", id="signin-steps")
+            with Center():
+                yield Static("", id="signin-qr")
+            yield Static("", id="signin-status")
+        yield Footer()
+
+    async def on_mount(self) -> None:
+        await self.action_restart()
+        self.set_interval(2, self._poll)
+
+    async def action_restart(self) -> None:
+        self.query_one("#signin-status", Static).update(Text("contacting plex.tv…", style=DIM))
+        try:
+            self.login = await asyncio.to_thread(plex.start_login, self.client_id)
+        except Exception as e:  # offline, DNS, plex.tv down
+            self.query_one("#signin-status", Static).update(Text(f"couldn't reach plex.tv: {e}\npress n to try again", style=PINK))
+            return
+        steps = Text.assemble(
+            ("1  ", YELLOW), ("press ", FG), ("o", f"bold {GREEN}"), (" to open the sign-in page, or ", FG), ("c", f"bold {GREEN}"),
+            (" to copy the link\n", FG),
+            ("2  ", YELLOW), ("or scan this with your phone\n", FG),
+            ("3  ", YELLOW), ("or on any device go to ", FG), ("plex.tv/link", f"bold {CYAN}"), (" and enter ", FG),
+            (self.login.link_code, f"bold {YELLOW}"),
+        )
+        self.query_one("#signin-steps", Static).update(steps)
+        self.query_one("#signin-qr", Static).update(qr_text(self.login.url))
+        self.query_one("#signin-status", Static).update(Text("waiting for you to approve…", style=DIM))
+
+    def action_copy(self) -> None:
+        if self.login:
+            self.app.copy_to_clipboard(self.login.url)
+            self.notify("Sign-in link copied")
+
+    def action_open(self) -> None:
+        if self.login:
+            self.app.open_url(self.login.url)
+
+    async def _poll(self) -> None:
+        if not self.login or self._polling:
+            return
+        self._polling = True
+        try:
+            token = await asyncio.to_thread(plex.poll_login, self.client_id, self.login)
+        except Exception:
+            token = None  # a blip; try again on the next tick
+        finally:
+            self._polling = False
+        if token:
+            self.dismiss(token)
+
+
+class PinScreen(ModalScreen[str]):
+    BINDINGS = [Binding("escape", "cancel", "back")]
+
+    def __init__(self, user: str, error: str = "") -> None:
+        super().__init__()
+        self.user, self.error = user, error
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pin"):
+            yield Static(Text.assemble(("PIN for ", FG), (self.user, f"bold {YELLOW}")))
+            yield Input(password=True, max_length=4, restrict=r"[0-9]*", placeholder="••••", id="pin-input")
+            yield Static(Text(self.error, style=PINK))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if len(event.value) == 4:
+            self.dismiss(event.value)
+
+    def action_cancel(self) -> None:
+        self.dismiss("")
+
+
+class PickScreen(Screen[int]):
+    """A titled list; dismisses with the chosen index (-1 to go back)."""
+
+    BINDINGS = [Binding("escape", "back", "back"), Binding("q", "app.quit", "quit")]
+
+    def __init__(self, title: str, rows: list[Text], hint: str = "") -> None:
+        super().__init__()
+        self.title_text, self.rows, self.hint = title, rows, hint
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pick"):
+            yield Static(Text(self.title_text, style=f"bold {PINK}"), id="pick-title")
+            if self.hint:
+                yield Static(Text(self.hint, style=DIM))
+            yield OptionList(*[Option(row, id=str(i)) for i, row in enumerate(self.rows)], markup=False, id="pick-list")
+        yield Footer()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(int(event.option.id or 0))
+
+    def action_back(self) -> None:
+        self.dismiss(-1)
+
+
+def user_rows(users: list[plex.HomeUser]) -> list[Text]:
+    return [
+        Text.assemble(
+            ("  ● " if u.admin else "  ○ ", GREEN if u.admin else CYAN),
+            (u.title, FG),
+            ("  🔒" if u.protected else "", YELLOW),
+            ("  managed" if u.restricted else "", DIM),
+        )
+        for u in users
+    ]
+
+
+def server_rows(servers: list) -> list[Text]:
+    return [
+        Text.assemble(
+            ("  ● " if s.presence else "  ○ ", GREEN if s.presence else DIM),
+            (s.name, FG),
+            ("  yours" if s.owned else "  shared", DIM),
+            ("" if s.presence else "  offline", PINK),
+        )
+        for s in servers
+    ]
