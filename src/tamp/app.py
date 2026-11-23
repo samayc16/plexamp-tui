@@ -23,7 +23,7 @@ from tamp.queue import Queue
 from tamp.ui import fmt
 from tamp.ui.main import MainScreen, guarded
 from tamp.ui.menus import Choose
-from tamp.ui.nowplaying import NowPlaying, PlayerScreen
+from tamp.ui.nowplaying import NowPlaying, PlayerScreen, Seek
 from tamp.ui.signin import LoadingScreen, PickScreen, PinScreen, SignInScreen, server_rows, user_rows
 
 CLI_COMMANDS = {"toggle", "next", "prev", "stop"}
@@ -291,6 +291,10 @@ class TampApp(App):
         """A lyric line was clicked."""
         if self.player and self.player.state.track:
             await self.player.seek(int(position_ms))
+
+    def on_seek(self, message: Seek) -> None:
+        """The progress bar was clicked or dragged (side panel or full-screen player)."""
+        self.run_worker(self.seek_fraction(message.fraction), group="seek", exclusive=True)
 
     async def seek_fraction(self, fraction: float) -> None:
         if self.player and (track := self.player.state.track):

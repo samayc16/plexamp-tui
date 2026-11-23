@@ -33,28 +33,62 @@ class Seek(Message):
 
 
 class ProgressLine(Static):
-    """0:42 ━━━━━━●──────── 3:51, clickable."""
+    """0:42 ━━━━━━●──────── 3:51. Click or drag to seek: while dragging the knob and time
+    follow the mouse, and the seek happens once, on release."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._dur = 0
+        self._bar_x = 0
+        self._bar_w = 0
+        self._position = 0
+        self._drag: float | None = None  # fraction under the mouse while dragging
 
     def show(self, position_ms: int, duration_ms: int) -> None:
-        self._dur = duration_ms
+        self._position, self._dur = position_ms, duration_ms
+        self._draw()
+
+    def _draw(self) -> None:
+        dragging = self._drag is not None and self._dur
+        position = int(self._drag * self._dur) if dragging else self._position
         width = max(10, self.size.width)
-        left, right = duration(position_ms), duration(duration_ms)
+        left, right = duration(position), duration(self._dur)
         self._bar_x = len(left) + 1
         self._bar_w = max(4, width - len(left) - len(right) - 2)
-        done = min(self._bar_w - 1, int(self._bar_w * position_ms / duration_ms)) if duration_ms else 0
+        done = min(self._bar_w - 1, int(self._bar_w * position / self._dur)) if self._dur else 0
         self.update(
             Text.assemble(
-                (left + " ", DIM),
-                (BAR_FULL * done, GREEN),
-                (KNOB if duration_ms else BAR_EMPTY, f"bold {GREEN}"),
+                (left + " ", f"bold {YELLOW}" if dragging else DIM),
+                (BAR_FULL * done, YELLOW if dragging else GREEN),
+                (KNOB if self._dur else BAR_EMPTY, f"bold {YELLOW if dragging else GREEN}"),
                 (BAR_EMPTY * (self._bar_w - done - 1), DIM),
                 (" " + right, DIM),
             )
         )
 
-    def on_click(self, event: events.Click) -> None:
-        if getattr(self, "_dur", 0) and self._bar_w:
-            self.post_message(Seek(min(1.0, max(0.0, (event.x - self._bar_x) / self._bar_w))))
+    def _fraction(self, x: int) -> float:
+        return min(1.0, max(0.0, (x - self._bar_x) / self._bar_w)) if self._bar_w else 0.0
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        if self._dur and event.button == 1:
+            self._drag = self._fraction(event.x)
+            self.capture_mouse()
+            self._draw()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._drag is not None:
+            self._drag = self._fraction(event.x)
+            self._draw()
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        if self._drag is None:
+            return
+        fraction = self._drag  # where the press or the last move put it
+        self._drag = None
+        self.release_mouse()
+        self._position = int(fraction * self._dur)  # show the new spot until playback catches up
+        self._draw()
+        self.post_message(Seek(fraction))
 
 
 def lyrics_text(lyrics: Lyrics, position_ms: int, height: int, width: int, big: bool = False) -> Text:

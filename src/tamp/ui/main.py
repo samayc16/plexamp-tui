@@ -22,7 +22,7 @@ from tamp.models import Album, Artist, Playlist, Track
 from tamp.ui import fmt, pages
 from tamp.ui.browser import Browser, Entry, Page, all_tracks, track_block
 from tamp.ui.menus import Choose, ContextMenu, HelpScreen, InfoScreen, MenuItem, Prompt
-from tamp.ui.nowplaying import LyricsView, NowPlaying, PlayerScreen, Seek
+from tamp.ui.nowplaying import LyricsView, NowPlaying, PlayerScreen
 
 
 def guarded(fn):
@@ -791,9 +791,6 @@ class MainScreen(Screen):
         self.query_one("#lyrics").display = on
         if on:
             self.tick()
-
-    def on_seek(self, message: Seek) -> None:
-        self.run_worker(self.tamp.seek_fraction(message.fraction))
 
     # ── updates from the app ──
     def tick(self) -> None:
