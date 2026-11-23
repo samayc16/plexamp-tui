@@ -35,7 +35,7 @@ tamp --demo     # no Plex needed
 ## Use it from tmux
 
 ```tmux
-set -g status-right '#(tamp status --width 40)  %H:%M'
+set -g status-right '#(tamp status --tmux --width 40)%H:%M'
 bind-key M-p run-shell 'tamp toggle'
 bind-key M-n run-shell 'tamp next'
 ```

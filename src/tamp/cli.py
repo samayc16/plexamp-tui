@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     status = sub.add_parser("status", help="what's playing, one line (for tmux)")
     status.add_argument("--json", action="store_true", help="everything as JSON")
     status.add_argument("--width", type=int, default=50)
+    status.add_argument("--tmux", action="store_true", help="pad for a tmux status bar (nothing when idle)")
     for name, text in (
         ("toggle", "play / pause"),
         ("next", "next track"),
@@ -33,7 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         from tamp import status
 
-        print(status.as_json() if args.json else status.line(args.width))
+        text = status.as_json() if args.json else status.line(args.width)
+        print(text + "  " if args.tmux and text else text)
         return 0
     if args.command in ("toggle", "next", "prev", "stop"):
         from tamp.mpv import send
