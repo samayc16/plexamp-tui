@@ -16,9 +16,10 @@ from textual.screen import Screen
 from textual.widgets import Static
 
 from tamp.lrc import Lyrics
-from tamp.models import Playback
+from tamp.models import Playback, Track
 from tamp.queue import Queue
-from tamp.ui.fmt import CYAN, DIM, FG, GREEN, ORANGE, PINK, PURPLE, YELLOW, duration, fit
+from tamp.ui import fmt
+from tamp.ui.fmt import duration, fit
 
 BAR_FULL, BAR_EMPTY, KNOB = "━", "─", "●"
 LYRIC_LEAD_MS = 250  # land just before the line so you hear it start
@@ -66,11 +67,11 @@ class ProgressLine(Static):
         done = min(self._bar_w - 1, int(self._bar_w * position / self._dur)) if self._dur else 0
         self.update(
             Text.assemble(
-                (left + " ", f"bold {YELLOW}" if dragging else DIM),
-                (BAR_FULL * done, YELLOW if dragging else GREEN),
-                (KNOB if self._dur else BAR_EMPTY, f"bold {YELLOW if dragging else GREEN}"),
-                (BAR_EMPTY * (self._bar_w - done - 1), DIM),
-                (" " + right, DIM),
+                (left + " ", f"bold {fmt.YELLOW}" if dragging else fmt.DIM),
+                (BAR_FULL * done, fmt.YELLOW if dragging else fmt.GREEN),
+                (KNOB if self._dur else BAR_EMPTY, f"bold {fmt.YELLOW if dragging else fmt.GREEN}"),
+                (BAR_EMPTY * (self._bar_w - done - 1), fmt.DIM),
+                (" " + right, fmt.DIM),
             )
         )
 
@@ -111,10 +112,10 @@ def lyrics_text(lyrics: Lyrics, position_ms: int, height: int, width: int, big: 
         words = line.text or "♪"
         sung = lyrics.timed and i == current
         if sung:
-            style = Style(color=YELLOW, bold=True, underline=False)
+            style = Style(color=fmt.YELLOW, bold=True, underline=False)
             words = fit(words, width).rstrip()
         else:
-            colour = DIM if lyrics.timed and i < current else FG
+            colour = fmt.DIM if lyrics.timed and i < current else fmt.FG
             style = Style(color=colour, underline=False)
             words = fit(words, width).rstrip()
         if lyrics.timed and line.time_ms is not None:  # click a line to jump there (see lyric_seek)
@@ -125,27 +126,30 @@ def lyrics_text(lyrics: Lyrics, position_ms: int, height: int, width: int, big: 
 
 
 def status_line(state: Playback, queue: Queue, device: str, sleep_at: float | None, loudness: bool) -> Text:
-    icon = ("⏸ paused", YELLOW) if state.paused or not state.track else ("▶ playing", GREEN)
+    icon = ("⏸ paused", fmt.YELLOW) if state.paused or not state.track else ("▶ playing", fmt.GREEN)
     repeat = {"off": "", "all": "  ⟳ all", "one": "  ⟳ one"}.get(queue.repeat, "")
     like = "  ♥" if state.track and state.track.liked else ""
     sleep = f"  zz {max(0, int(sleep_at - time.time()) // 60)}m" if sleep_at else ""
     vol_bars = "▮" * round(state.volume / 20) + "▯" * (5 - round(state.volume / 20))
     return Text.assemble(
         icon,
-        (repeat, PURPLE),
-        (like, PINK),
-        (sleep, ORANGE),
-        ("  " + vol_bars, DIM),
-        ("\n→ ", DIM),
-        (device, CYAN),
-        ("  · leveling" if loudness else "", DIM),
+        (repeat, fmt.PURPLE),
+        (like, fmt.PINK),
+        (sleep, fmt.ORANGE),
+        ("  " + vol_bars, fmt.DIM),
+        ("\n→ ", fmt.DIM),
+        (device, fmt.CYAN),
+        ("  · leveling" if loudness else "", fmt.DIM),
     )
 
 
-def track_info(state: Playback, width: int) -> Text:
-    t = state.track
+def track_info(state: Playback, width: int, queued: Track | None = None) -> Text:
+    """What's playing; with nothing loaded, the queue's track (press space to play it)."""
+    t = state.track or queued
     if t is None:
-        return Text("nothing playing\n", style=DIM) + Text("pick something and press enter", style=DIM)
+        return Text("nothing playing\n", style=fmt.DIM) + Text(
+            "pick something and press enter", style=fmt.DIM
+        )
     year = f" ({t.year})" if t.year else ""
     quality = " · ".join(
         x
@@ -153,10 +157,10 @@ def track_info(state: Playback, width: int) -> Text:
         if x
     )
     return Text.assemble(
-        (fit(t.title, width) + "\n", f"bold {FG}"),
-        (fit(t.artist, width) + "\n", PINK),
-        (fit(f"{t.album}{year}", width) + "\n", CYAN),
-        (quality, DIM),
+        (fit(t.title, width) + "\n", f"bold {fmt.FG}"),
+        (fit(t.artist, width) + "\n", fmt.PINK),
+        (fit(f"{t.album}{year}", width) + "\n", fmt.CYAN),
+        (quality, fmt.DIM),
     )
 
 
@@ -182,7 +186,7 @@ class NowPlaying(Vertical):
 
     def refresh_view(self) -> None:
         width = max(10, self.size.width - 2)
-        self.query_one("#np-info", Static).update(track_info(self.state, width))
+        self.query_one("#np-info", Static).update(track_info(self.state, width, self.queue.track))
         t = self.state.track
         bar = self.query_one(ProgressLine)
         if t:
@@ -197,17 +201,17 @@ class NowPlaying(Vertical):
     def _below(self, width: int) -> Text:
         height = max(3, self.size.height - 22)
         if self.lyrics and self.lyrics.lines:
-            return Text.assemble(("lyrics\n", f"bold {DIM}")) + lyrics_text(
+            return Text.assemble(("lyrics\n", f"bold {fmt.DIM}")) + lyrics_text(
                 self.lyrics, self.state.position_ms, height, width
             )
         upcoming = self.queue.upcoming[:height]
         if not upcoming:
-            return Text(self.queue.source, style=DIM)
+            return Text(self.queue.source, style=fmt.DIM)
         text = Text.assemble(
-            (f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", f"bold {DIM}")
+            (f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", f"bold {fmt.DIM}")
         )
         for t in upcoming:
-            text.append(fit(f"{t.title} · {t.artist}", width) + "\n", style=FG)
+            text.append(fit(f"{t.title} · {t.artist}", width) + "\n", style=fmt.FG)
         return text
 
 
@@ -218,12 +222,12 @@ class LyricsView(Static):
         height = max(5, self.size.height - 2)
         width = max(10, self.size.width - 4)
         if not lyrics or not lyrics.lines:
-            self.update(Text(f"\n  no lyrics for {title}" if title else "\n  nothing playing", style=DIM))
+            self.update(Text(f"\n  no lyrics for {title}" if title else "\n  nothing playing", style=fmt.DIM))
             return
         body = lyrics_text(lyrics, position_ms, height, width - 2)
         tag = "" if lyrics.timed else "  (not synced)"
         indented = Text("\n").join(Text("  ") + line for line in body.split())
-        self.update(Text(f"  {title}{tag}\n\n", style=f"bold {PINK}") + indented)
+        self.update(Text(f"  {title}{tag}\n\n", style=f"bold {fmt.PINK}") + indented)
 
 
 class PlayerScreen(Screen):
@@ -250,7 +254,7 @@ class PlayerScreen(Screen):
                 yield Static("", id="fp-status")
             yield Static("", id="fp-lyrics")
         hint = "  esc back · space pause · n / p next / previous · ← → seek · + - volume · * like"
-        yield Static(Text(hint, style=DIM), id="fp-hint")
+        yield Static(Text(hint, style=fmt.DIM), id="fp-hint")
 
     def on_mount(self) -> None:
         self.call_after_refresh(self.app.refresh_art)  # art needs the laid-out size
@@ -261,7 +265,8 @@ class PlayerScreen(Screen):
     def art_size(self) -> int:
         """Rows of art that fit (each row is two pixels; width is twice the rows)."""
         left = self.query_one("#fp-left")
-        return max(6, min(left.size.width // 2 - 1, self.size.height - 12))
+        # leave room below for title, artist, album, format, progress, status and where it plays
+        return max(6, min(left.size.width // 2 - 1, self.size.height - 14))
 
     def set_art(self, art: Text | None) -> None:
         self.query_one("#fp-art", Static).update(art or Text())
@@ -270,7 +275,7 @@ class PlayerScreen(Screen):
         self, state: Playback, queue: Queue, lyrics: Lyrics | None, device: str, sleep_at, loudness: bool
     ) -> None:
         width = max(10, self.query_one("#fp-left").size.width - 2)
-        self.query_one("#fp-info", Static).update(track_info(state, width))
+        self.query_one("#fp-info", Static).update(track_info(state, width, queue.track))
         if state.track:
             self.query_one(ProgressLine).show(state.position_ms, state.duration_ms or state.track.duration_ms)
         self.query_one("#fp-status", Static).update(status_line(state, queue, device, sleep_at, loudness))
@@ -287,8 +292,8 @@ class PlayerScreen(Screen):
             )
         else:
             upcoming = queue.upcoming[: max(3, pane.size.height - 2)]
-            text = Text.assemble(("up next\n\n", f"bold {DIM}"))
+            text = Text.assemble(("up next\n\n", f"bold {fmt.DIM}"))
             for t in upcoming:
-                text.append(f"{t.title}", style=FG)
-                text.append(f"  {t.artist}\n", style=DIM)
-            pane.update(text if upcoming else Text("no lyrics for this track", style=DIM))
+                text.append(f"{t.title}", style=fmt.FG)
+                text.append(f"  {t.artist}\n", style=fmt.DIM)
+            pane.update(text if upcoming else Text("no lyrics for this track", style=fmt.DIM))

@@ -280,3 +280,14 @@ def test_following_a_player_shows_its_own_queue_but_not_one_we_gave_it() -> None
     out._follow_queue("11", 1, "q")
     out._follow_queue("11", 2, "q")  # our own additions bump the version
     assert fetched == ["10", "10"]
+
+
+async def test_switching_output_shows_the_new_outputs_state_not_the_old_one() -> None:
+    player = Player(DemoLibrary(), lambda s, q: None)
+    phone, here = FakeOutput(), FakeOutput()
+    phone.state = Playback(track=Track(id="1", title="t", artist="a", album="b", duration_ms=1000))
+    here.state = Playback()
+    await player.use(phone)
+    assert player.state.track is not None
+    await player.use(here)
+    assert player.state.track is None  # not "playing" the phone's song on this computer

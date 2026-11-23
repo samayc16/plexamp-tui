@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 from rich.table import Table
@@ -102,6 +103,7 @@ HELP: list[tuple[str, list[tuple[str, str]]]] = [
             ("L", "lyrics, full size"),
             ("o", "play on: this computer, Plexamp, your phone…"),
             ("z · v", "sleep timer · loudness leveling"),
+            ("T", "theme: built-ins, your own, or auto (colours from the album art)"),
             ("?", "this help"),
             ("q", "quit"),
         ],
@@ -198,9 +200,16 @@ class Choose(ModalScreen[int]):
 
     BINDINGS: ClassVar[list[BindingType]] = [Binding("escape,q", "cancel", "cancel")]
 
-    def __init__(self, title: str, rows: list[Text], current: int = 0) -> None:
+    def __init__(
+        self,
+        title: str,
+        rows: list[Text],
+        current: int = 0,
+        on_highlight: Callable[[int], None] | None = None,
+    ) -> None:
         super().__init__()
         self.title_text, self.rows, self.current = title, rows, current
+        self.on_highlight = on_highlight  # e.g. preview a theme as you move
 
     def compose(self) -> ComposeResult:
         with Vertical(id="choose"):
@@ -214,6 +223,10 @@ class Choose(ModalScreen[int]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(int(event.option.id or 0))
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if self.on_highlight is not None and self.is_mounted:
+            self.on_highlight(int(event.option.id or 0))
 
     def action_cancel(self) -> None:
         self.dismiss(-1)

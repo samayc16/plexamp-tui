@@ -1,4 +1,4 @@
-"""Turning models into aligned, coloured rows (Monokai Pro palette)."""
+"""Turning models into aligned, coloured rows, in the current theme's colours."""
 
 from __future__ import annotations
 
@@ -7,9 +7,23 @@ from dataclasses import dataclass
 from rich.text import Text
 
 from tamp.models import Album, Artist, Playlist, Track
+from tamp.ui import theme
 
-PINK, GREEN, YELLOW, CYAN, PURPLE, ORANGE = "#ff6188", "#a9dc76", "#ffd866", "#78dce8", "#ab9df2", "#fc9867"
-DIM, FG = "#727072", "#fcfcfa"
+# the colour names the UI code uses, mapped to theme roles; read at render time (fmt.PINK)
+ROLES = {
+    "PINK": "accent", "GREEN": "playing", "YELLOW": "highlight", "CYAN": "album",
+    "PURPLE": "extra", "ORANGE": "warm", "DIM": "dim", "FG": "fg",
+}  # fmt: skip
+
+
+def __getattr__(name: str) -> str:
+    if name in ROLES:
+        return getattr(theme.current(), ROLES[name])
+    raise AttributeError(name)
+
+
+def colour(name: str) -> str:
+    return getattr(theme.current(), ROLES[name])
 
 
 def duration(ms: int) -> str:
@@ -73,42 +87,57 @@ def columns(
 def track_row(t: Track, cols: Columns, playing: bool = False, number: int | None = None) -> Text:
     num = f"{number if number is not None else '':>{cols.num - 1}} " if cols.num else ""
     parts = [
-        ("▶ " if playing else "  ", GREEN),
-        (num, DIM),
-        (fit(t.title, cols.title), f"bold {GREEN}" if playing else FG),
+        ("▶ " if playing else "  ", colour("GREEN")),
+        (num, colour("DIM")),
+        (fit(t.title, cols.title), f"bold {colour('GREEN')}" if playing else colour("FG")),
         (" " * GAP, ""),
-        (fit(t.artist, cols.artist), PINK if playing else DIM),
+        (fit(t.artist, cols.artist), colour("PINK") if playing else colour("DIM")),
     ]
     if cols.album:
-        parts += [(" " * GAP, ""), (fit(t.album, cols.album), DIM)]
-    parts += [(f" {'♥' if t.liked else ' '} ", PINK), (duration(t.duration_ms).rjust(7), DIM)]
+        parts += [(" " * GAP, ""), (fit(t.album, cols.album), colour("DIM"))]
+    parts += [
+        (f" {'♥' if t.liked else ' '} ", colour("PINK")),
+        (duration(t.duration_ms).rjust(7), colour("DIM")),
+    ]
     return Text.assemble(*parts)
 
 
 def artist_row(a: Artist, width: int) -> Text:
     genres = ", ".join(a.genres[:2])
     return Text.assemble(
-        ("  ◉ ", PURPLE), (fit(a.title, max(10, width - 6 - len(genres))), FG), (genres, DIM)
+        ("  ◉ ", colour("PURPLE")),
+        (fit(a.title, max(10, width - 6 - len(genres))), colour("FG")),
+        (genres, colour("DIM")),
     )
 
 
 def album_row(a: Album, width: int, show_artist: bool = True) -> Text:
     year = f"{a.year}" if a.year else ""
     count = f"{a.track_count} tracks" if a.track_count else ""
-    right = f"{year:>4}  {count:>10}"
+    right = f"  {year:>4}  {count:>10}"  # leading gap: a long title never runs into the year
     left = f"{a.title}" + (f"  ·  {a.artist}" if show_artist else "")
-    return Text.assemble(("  ◎ ", CYAN), (fit(left, max(10, width - 6 - len(right))), FG), (right, DIM))
+    return Text.assemble(
+        ("  ◎ ", colour("CYAN")),
+        (fit(left, max(10, width - 6 - len(right))), colour("FG")),
+        (right, colour("DIM")),
+    )
 
 
 def playlist_row(p: Playlist, width: int) -> Text:
-    icon, colour = ("  ✦ ", ORANGE) if p.radio else (("  ⚙ ", YELLOW) if p.smart else ("  ≡ ", YELLOW))
-    count = f"{p.count} tracks" if p.count and not p.radio else ("mix" if p.radio else "")
-    return Text.assemble((icon, colour), (fit(p.title, max(10, width - 6 - len(count))), FG), (count, DIM))
+    icon, tint = (
+        ("  ✦ ", colour("ORANGE"))
+        if p.radio
+        else (("  ⚙ ", colour("YELLOW")) if p.smart else ("  ≡ ", colour("YELLOW")))
+    )
+    count = f"  {p.count} tracks" if p.count and not p.radio else ("  mix" if p.radio else "")
+    return Text.assemble(
+        (icon, tint), (fit(p.title, max(10, width - 6 - len(count))), colour("FG")), (count, colour("DIM"))
+    )
 
 
-def action_row(icon: str, label: str, colour: str = GREEN) -> Text:
+def action_row(icon: str, label: str, colour: str = colour("GREEN")) -> Text:
     return Text.assemble((f"  {icon} ", colour), (label, f"bold {colour}"))
 
 
 def heading(label: str) -> Text:
-    return Text(f" {label}", style=f"bold {DIM}")
+    return Text(f" {label}", style=f"bold {colour('DIM')}")

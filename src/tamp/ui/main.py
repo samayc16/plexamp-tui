@@ -136,6 +136,7 @@ class MainScreen(Screen):
         Binding("P", "add_to_playlist", "add to playlist", show=False),
         Binding("z", "sleep", "sleep", show=False),
         Binding("v", "app.loudness", "leveling", show=False),
+        Binding("T", "app.choose_theme", "theme", show=False),
         Binding("j", "cursor(1)", "down", show=False),
         Binding("k", "cursor(-1)", "up", show=False),
         Binding("g", "cursor_edge('top')", "top", show=False),
@@ -857,6 +858,15 @@ class MainScreen(Screen):
             self.tick()
 
     # ── updates from the app ──
+    def restyle(self) -> None:
+        """The theme changed: redraw everything that has colours baked into its text."""
+        nav = self.query_one("#nav", OptionList)
+        for n, (key, label) in enumerate(pages.SECTIONS, start=1):
+            nav.replace_option_prompt(key, Text.assemble((f"{n} ", fmt.DIM), (label, fmt.FG)))
+        self.update_topbar()
+        self.rerender()
+        self.tick()
+
     def tick(self) -> None:
         """Redraw what moves: progress, lyrics."""
         np = self.query_one(NowPlaying)

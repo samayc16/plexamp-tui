@@ -20,7 +20,7 @@ from tamp.mpv import Mpv, MpvError
 from tamp.output import LocalOutput, RemoteOutput, TaskSet
 from tamp.player import Player
 from tamp.queue import Queue
-from tamp.ui import fmt
+from tamp.ui import fmt, theme
 from tamp.ui.main import MainScreen, guarded
 from tamp.ui.menus import Choose
 from tamp.ui.nowplaying import NowPlaying, PlayerScreen, Seek, lyric_seek
@@ -52,9 +52,83 @@ class TampApp(App):
         self._lyrics_cache: dict[str, Lyrics | None] = {}
         self._art: bytes | None = None
         self._tasks = TaskSet(lambda m: self.notify(m, severity="warning"))
+        self.user_themes, self._theme_problems = theme.load_user_themes(config.CONFIG_DIR / "themes")
+        self._art_palettes: dict[str, theme.Palette] = {}  # album art (thumb) → its auto palette
+        theme.activate(self.resolve_theme(self.cfg.theme))
+
+    # ── themes ──
+    def get_css_variables(self) -> dict[str, str]:
+        return {**super().get_css_variables(), **theme.css_variables(theme.current())}
+
+    def theme_names(self) -> list[str]:
+        return [theme.AUTO, *theme.BUILT_IN, *self.user_themes]
+
+    def resolve_theme(self, name: str) -> theme.Palette:
+        if name == theme.AUTO:
+            playing = self.player.state.track if self.player else None
+            cached = self._art_palettes.get(playing.thumb) if playing and playing.thumb else None
+            return cached or theme.BUILT_IN["terminal"]  # nothing playing: your terminal's colours
+        return self.user_themes.get(name) or theme.BUILT_IN.get(name) or theme.BUILT_IN[theme.DEFAULT]
+
+    def apply_palette(self, palette: theme.Palette) -> None:
+        if palette == theme.current() and self.ansi_color == palette.ansi:
+            return
+        theme.activate(palette)
+        self.ansi_color = palette.ansi  # terminal colours pass through instead of being converted
+        self.refresh_css(animate=False)
+        for screen in self.screen_stack:
+            if restyle := getattr(screen, "restyle", None):
+                restyle()
+        self._dirty = True
+
+    def action_choose_theme(self) -> None:
+        self.run_worker(self.choose_theme(), exclusive=True, group="theme")
+
+    async def choose_theme(self) -> None:
+        names = self.theme_names()
+        about = {theme.AUTO: "from the playing album's art", "terminal": "your terminal's own colours"}
+        rows = [
+            Text.assemble(
+                ("● " if name == self.cfg.theme else "○ ", fmt.GREEN),
+                (name, fmt.FG),
+                (f"  {about.get(name, 'yours' if name in self.user_themes else '')}", fmt.DIM),
+            )
+            for name in names
+        ]
+        before = theme.current()
+        start = names.index(self.cfg.theme) if self.cfg.theme in names else 0
+        pick = await self.push_screen_wait(
+            Choose(
+                "Theme", rows, start, on_highlight=lambda i: self.apply_palette(self.resolve_theme(names[i]))
+            )
+        )
+        if pick < 0:
+            self.apply_palette(before)  # cancelled: back to how it was
+            return
+        self.cfg = replace(self.cfg, theme=names[pick])
+        config.save(self.cfg)
+        self.apply_palette(self.resolve_theme(names[pick]))
+        self.notify(f"theme: {names[pick]}")
+
+    async def auto_theme(self, track: Track, image: bytes | None) -> None:
+        """In auto, colour everything from the playing album's art."""
+        if self.cfg.theme != theme.AUTO or not track.thumb or image is None:
+            return
+        if track.thumb not in self._art_palettes:
+            palette = await asyncio.to_thread(theme.from_art, image)
+            if palette is None:
+                return
+            self._art_palettes[track.thumb] = palette
+        playing = self.player.state.track if self.player else None
+        if playing is not None and playing.id == track.id:
+            self.apply_palette(self._art_palettes[track.thumb])
 
     def on_mount(self) -> None:
         import signal
+
+        self.ansi_color = theme.current().ansi
+        for problem in self._theme_problems:
+            self.notify(f"theme {problem}", severity="warning", timeout=10)
 
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGHUP, signal.SIGTERM):  # closed terminal / killed pane: clean up mpv
@@ -200,6 +274,10 @@ class TampApp(App):
 
     def on_player_update(self, state: Playback, queue: Queue) -> None:
         self._dirty = True
+        if self.cfg.theme == theme.AUTO:  # stopped → terminal colours; playing again → the album's
+            wanted = self.resolve_theme(theme.AUTO)
+            if wanted is not theme.current() and (state.track is None or wanted.name != "terminal"):
+                self.apply_palette(wanted)
         track = state.track or queue.track
         if track and track.id != self._shown_track:
             self._shown_track = track.id
@@ -232,6 +310,7 @@ class TampApp(App):
         if self._shown_track == track.id:
             self._art = image
             self.refresh_art()
+            await self.auto_theme(track, image)
         self._dirty = True
 
     def refresh_art(self) -> None:

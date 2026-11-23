@@ -54,6 +54,8 @@ class Player:
             if not isinstance(old, LocalOutput):  # tamp's own mpv stays up for switching back
                 await old.close()
         await output.start()
+        # show the new output's own state at once, not the last one from where you were
+        self.changed(getattr(output, "state", None) or Playback(volume=self.state.volume))
         if resume and self.queue.track and getattr(output, "controllable", True):
             await self._guard(output.load(self.queue))
 

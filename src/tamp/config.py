@@ -40,6 +40,7 @@ class Config:
     # extra mpv options for local playback, e.g. ["--audio-device=coreaudio/BuiltInSpeakerDevice"]
     # (`mpv --audio-device=help` lists devices); options only, and never the control socket
     mpv_args: tuple[str, ...] = ()
+    theme: str = "monokai-pro"  # a built-in, one of yours (~/.config/tamp/themes/*.toml), or "auto"
 
     @property
     def signed_in(self) -> bool:

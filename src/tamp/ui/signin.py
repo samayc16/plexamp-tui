@@ -17,7 +17,7 @@ from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from tamp import plex
-from tamp.ui.fmt import CYAN, DIM, FG, GREEN, PINK, YELLOW
+from tamp.ui import fmt
 
 
 def qr_text(data: str) -> Text:
@@ -59,7 +59,8 @@ class SignInScreen(Screen[str]):
     def compose(self) -> ComposeResult:
         with Vertical(id="signin"):
             yield Static(
-                Text("tamp", style=f"bold {PINK}") + Text("  ·  sign in to Plex", style=FG), id="signin-title"
+                Text("tamp", style=f"bold {fmt.PINK}") + Text("  ·  sign in to Plex", style=fmt.FG),
+                id="signin-title",
             )
             yield Static("", id="signin-steps")
             with Center():
@@ -72,32 +73,32 @@ class SignInScreen(Screen[str]):
         self.set_interval(2, self._poll)
 
     async def action_restart(self) -> None:
-        self.query_one("#signin-status", Static).update(Text("contacting plex.tv…", style=DIM))
+        self.query_one("#signin-status", Static).update(Text("contacting plex.tv…", style=fmt.DIM))
         try:
             self.login = await asyncio.to_thread(plex.start_login, self.client_id)
         except Exception as e:  # offline, DNS, plex.tv down
             self.query_one("#signin-status", Static).update(
-                Text(f"couldn't reach plex.tv: {e}\npress n to try again", style=PINK)
+                Text(f"couldn't reach plex.tv: {e}\npress n to try again", style=fmt.PINK)
             )
             return
         steps = Text.assemble(
-            ("1  ", YELLOW),
-            ("press ", FG),
-            ("o", f"bold {GREEN}"),
-            (" to open the sign-in page, or ", FG),
-            ("c", f"bold {GREEN}"),
-            (" to copy the link\n", FG),
-            ("2  ", YELLOW),
-            ("or scan this with your phone\n", FG),
-            ("3  ", YELLOW),
-            ("or on any device go to ", FG),
-            ("plex.tv/link", f"bold {CYAN}"),
-            (" and enter ", FG),
-            (self.login.link_code, f"bold {YELLOW}"),
+            ("1  ", fmt.YELLOW),
+            ("press ", fmt.FG),
+            ("o", f"bold {fmt.GREEN}"),
+            (" to open the sign-in page, or ", fmt.FG),
+            ("c", f"bold {fmt.GREEN}"),
+            (" to copy the link\n", fmt.FG),
+            ("2  ", fmt.YELLOW),
+            ("or scan this with your phone\n", fmt.FG),
+            ("3  ", fmt.YELLOW),
+            ("or on any device go to ", fmt.FG),
+            ("plex.tv/link", f"bold {fmt.CYAN}"),
+            (" and enter ", fmt.FG),
+            (self.login.link_code, f"bold {fmt.YELLOW}"),
         )
         self.query_one("#signin-steps", Static).update(steps)
         self._show_qr()
-        self.query_one("#signin-status", Static).update(Text("waiting for you to approve…", style=DIM))
+        self.query_one("#signin-status", Static).update(Text("waiting for you to approve…", style=fmt.DIM))
 
     def _show_qr(self) -> None:
         if not self.login:
@@ -105,7 +106,7 @@ class SignInScreen(Screen[str]):
         qr = qr_text(self.login.short_url)
         fits = len(qr.plain.splitlines()) + 12 <= self.size.height
         self.query_one("#signin-qr", Static).update(
-            qr if fits else Text("(make the window taller to see a QR code)", style=DIM)
+            qr if fits else Text("(make the window taller to see a QR code)", style=fmt.DIM)
         )
 
     def on_resize(self) -> None:
@@ -143,9 +144,9 @@ class PinScreen(ModalScreen[str]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="pin"):
-            yield Static(Text.assemble(("PIN for ", FG), (self.user, f"bold {YELLOW}")))
+            yield Static(Text.assemble(("PIN for ", fmt.FG), (self.user, f"bold {fmt.YELLOW}")))
             yield Input(password=True, max_length=4, restrict=r"[0-9]*", placeholder="••••", id="pin-input")
-            yield Static(Text(self.error, style=PINK))
+            yield Static(Text(self.error, style=fmt.PINK))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if len(event.value) == 4:
@@ -169,9 +170,9 @@ class PickScreen(Screen[int]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="pick"):
-            yield Static(Text(self.title_text, style=f"bold {PINK}"), id="pick-title")
+            yield Static(Text(self.title_text, style=f"bold {fmt.PINK}"), id="pick-title")
             if self.hint:
-                yield Static(Text(self.hint, style=DIM))
+                yield Static(Text(self.hint, style=fmt.DIM))
             yield OptionList(
                 *[Option(row, id=str(i)) for i, row in enumerate(self.rows)], markup=False, id="pick-list"
             )
@@ -187,10 +188,10 @@ class PickScreen(Screen[int]):
 def user_rows(users: list[plex.HomeUser]) -> list[Text]:
     return [
         Text.assemble(
-            ("  ● " if u.admin else "  ○ ", GREEN if u.admin else CYAN),
-            (u.title, FG),
-            ("  🔒" if u.protected else "", YELLOW),
-            ("  managed" if u.restricted else "", DIM),
+            ("  ● " if u.admin else "  ○ ", fmt.GREEN if u.admin else fmt.CYAN),
+            (u.title, fmt.FG),
+            ("  🔒" if u.protected else "", fmt.YELLOW),
+            ("  managed" if u.restricted else "", fmt.DIM),
         )
         for u in users
     ]
@@ -199,10 +200,10 @@ def user_rows(users: list[plex.HomeUser]) -> list[Text]:
 def server_rows(servers: list) -> list[Text]:
     return [
         Text.assemble(
-            ("  ● " if s.presence else "  ○ ", GREEN if s.presence else DIM),
-            (s.name, FG),
-            ("  yours" if s.owned else "  shared", DIM),
-            ("" if s.presence else "  offline", PINK),
+            ("  ● " if s.presence else "  ○ ", fmt.GREEN if s.presence else fmt.DIM),
+            (s.name, fmt.FG),
+            ("  yours" if s.owned else "  shared", fmt.DIM),
+            ("" if s.presence else "  offline", fmt.PINK),
         )
         for s in servers
     ]
@@ -219,6 +220,6 @@ class LoadingScreen(Screen[None]):
         from textual.widgets import LoadingIndicator
 
         with Vertical(id="loading"):
-            yield Static(Text("tamp", style=f"bold {PINK}"), id="loading-title")
-            yield Static(Text(self.message, style=DIM))
+            yield Static(Text("tamp", style=f"bold {fmt.PINK}"), id="loading-title")
+            yield Static(Text(self.message, style=fmt.DIM))
             yield LoadingIndicator()
