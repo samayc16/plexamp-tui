@@ -28,7 +28,7 @@ def track_row(
     t: Track, width: int, playing: bool = False, show_album: bool = True, number: int | None = None
 ) -> Text:
     marker = Text("▶ " if playing else "  ", style=GREEN)
-    num = f"{number if number is not None else (t.index or ''):>3} "
+    num = f"{number if number is not None else '':>3} "  # album pages pass the track number
     like = "♥" if t.liked else " "
     dur = duration(t.duration_ms)
     rest = max(10, width - len(num) - 2 - len(dur) - 4)

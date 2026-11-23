@@ -19,6 +19,9 @@ class Library(Protocol):
     name: str
 
     def home(self) -> list[Hub]: ...
+    def album(self, album_id: str) -> Album: ...
+    def artist(self, artist_id: str) -> Artist: ...
+    def liked(self) -> list[Track]: ...
     def artist_overview(self, artist: Artist) -> ArtistOverview: ...
     def details(self, track: Track) -> list[tuple[str, str]]: ...
     def artists(self) -> list[Artist]: ...
@@ -100,6 +103,8 @@ class PlexLibrary:
             rating=t.userRating,
             codec=media.audioCodec if media else None,
             bitrate_kbps=media.bitrate if media else None,
+            album_id=str(t.parentRatingKey or ""),
+            artist_id=str(t.grandparentRatingKey or ""),
         )
 
     def _playlist(self, p, radio: bool = False) -> Playlist:
@@ -144,6 +149,18 @@ class PlexLibrary:
             if converted:
                 hubs.append(Hub(title=hub.title, kind=kind, items=tuple(converted)))
         return hubs
+
+    def album(self, album_id: str) -> Album:
+        return self._album(self._obj(album_id))
+
+    def artist(self, artist_id: str) -> Artist:
+        return self._artist(self._obj(artist_id))
+
+    def liked(self) -> list[Track]:
+        return [
+            self._track(t)
+            for t in self.section.searchTracks(filters={"userRating": 10}, sort="lastRatedAt:desc")
+        ]
 
     def artist_overview(self, artist: Artist) -> ArtistOverview:
         a = self._obj(artist.id)

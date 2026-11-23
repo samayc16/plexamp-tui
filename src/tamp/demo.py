@@ -96,6 +96,8 @@ class DemoLibrary:
                         bitrate_kbps=900 + 40 * n,
                         gain_db=-1.5 - n * 0.4,
                         has_lyrics=song == "Low Orbit",
+                        album_id=album.id,
+                        artist_id=artist_obj.id,
                     )
                     for n, song in enumerate(songs)
                 ]
@@ -123,6 +125,15 @@ class DemoLibrary:
             Hub("Artists", "artist", tuple(self._artists)),
         ]
 
+    def album(self, album_id: str) -> Album:
+        return next(a for a in self._albums if a.id == album_id)
+
+    def artist(self, artist_id: str) -> Artist:
+        return next(a for a in self._artists if a.id == artist_id)
+
+    def liked(self) -> list[Track]:
+        return [t for t in self._all_tracks() if t.liked]
+
     def artist_overview(self, artist: Artist) -> ArtistOverview:
         tracks = self.artist_tracks(artist)
         albums = self.albums(artist)
@@ -134,7 +145,7 @@ class DemoLibrary:
         )
 
     def details(self, track: Track) -> list[tuple[str, str]]:
-        return [
+        rows = [
             ("Title", track.title),
             ("Artist", track.artist),
             ("Album", f"{track.album} ({track.year})"),
@@ -147,6 +158,7 @@ class DemoLibrary:
             ("Plays", "3"),
             ("Rating", "♥ liked" if self._ratings.get(track.id, track.rating) == 10 else ""),
         ]
+        return [(k, v) for k, v in rows if v]
 
     def artists(self) -> list[Artist]:
         return list(self._artists)

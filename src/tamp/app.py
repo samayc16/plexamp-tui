@@ -17,11 +17,13 @@ from tamp.library import Library, PlexLibrary
 from tamp.lrc import Lyrics
 from tamp.models import THIS_DEVICE, Playback, Track
 from tamp.mpv import Mpv, MpvError
-from tamp.output import LocalOutput, RemoteOutput
+from tamp.output import LocalOutput, RemoteOutput, TaskSet
 from tamp.player import Player
 from tamp.queue import Queue
 from tamp.ui import fmt
-from tamp.ui.main import Choose, MainScreen
+from tamp.ui.main import MainScreen, guarded
+from tamp.ui.menus import Choose
+from tamp.ui.nowplaying import NowPlaying, PlayerScreen
 from tamp.ui.signin import PickScreen, PinScreen, SignInScreen, server_rows, user_rows
 
 CLI_COMMANDS = {"toggle", "next", "prev", "stop"}
@@ -46,6 +48,8 @@ class TampApp(App):
         self._dirty = False
         self._shown_track: str | None = None
         self._lyrics_cache: dict[str, Lyrics | None] = {}
+        self._art: bytes | None = None
+        self._tasks = TaskSet(lambda m: self.notify(m, severity="warning"))
 
     def on_mount(self) -> None:
         import signal
@@ -157,10 +161,17 @@ class TampApp(App):
                     "prev": self.player.prev,
                     "stop": self.player.stop,
                 }[args[1]]
-                asyncio.get_running_loop().create_task(command())
+                self._tasks.spawn(command())
             return
         if self.local and self.player and self.player.output is self.local:
             self.local.handle_event(msg)
+
+    @property
+    def now_track(self) -> Track | None:
+        """What's playing on the current output (a remote player included), else the queue's."""
+        if self.player is None:
+            return None
+        return self.player.state.track or self.player.queue.track
 
     def on_player_update(self, state: Playback, queue: Queue) -> None:
         self._dirty = True
@@ -170,8 +181,12 @@ class TampApp(App):
             self.load_track_extras(track)
             if isinstance(self.screen, MainScreen):
                 self.screen.rerender()  # move the ▶ marker
-        if isinstance(self.screen, MainScreen):
-            self.screen.refresh_queue_page()
+        main = self._main()
+        if main is not None:
+            main.refresh_queue_page()
+
+    def _main(self) -> MainScreen | None:
+        return next((s for s in self.screen_stack if isinstance(s, MainScreen)), None)
 
     @work(group="extras", exclusive=True)
     async def load_track_extras(self, track: Track) -> None:
@@ -184,40 +199,94 @@ class TampApp(App):
                 self._lyrics_cache[track.id] = await asyncio.to_thread(lib.lyrics, track)
             except Exception:
                 self._lyrics_cache[track.id] = None
-        self.current_lyrics = (
-            self._lyrics_cache[track.id] if self._shown_track == track.id else self.current_lyrics
-        )
+        if self._shown_track == track.id:
+            self.current_lyrics = self._lyrics_cache[track.id]
         image = None
         with contextlib.suppress(Exception):
-            image = await asyncio.to_thread(lib.art, track.thumb, 400)
-        if isinstance(self.screen, MainScreen) and self._shown_track == track.id:
-            from tamp.ui.widgets import NowPlaying
-
-            np = self.screen.query_one(NowPlaying)
-            rows = max(5, min((np.size.width - 4) // 2, np.size.height - 20))  # leave room for lyrics
-            np.set_art(art.render(image, rows * 2, rows) if image else None)
+            image = await asyncio.to_thread(lib.art, track.thumb, 600)
+        if self._shown_track == track.id:
+            self._art = image
+            self.refresh_art()
         self._dirty = True
 
-    def _tick(self) -> None:
-        if isinstance(self.screen, MainScreen) and (
-            self._dirty or (self.player and not self.player.state.paused)
-        ):
-            self._dirty = False
-            self.screen.tick()
+    def refresh_art(self) -> None:
+        """Draw the playing track's art at the size each view has room for."""
+        main = self._main()
+        if main is not None:
+            np = main.query_one(NowPlaying)
+            rows = max(5, min((np.size.width - 4) // 2, np.size.height - 20))  # leave room for lyrics
+            np.set_art(art.render(self._art, rows * 2, rows) if self._art else None)
+        if isinstance(self.screen, PlayerScreen):
+            rows = self.screen.art_size()
+            self.screen.set_art(art.render(self._art, rows * 2, rows) if self._art else None)
 
-    # ── commands used by the main screen ──
+    def _tick(self) -> None:
+        if self.player is None or not (self._dirty or not self.player.state.paused):
+            return
+        self._dirty = False
+        main = self._main()
+        if main is not None:
+            main.tick()
+        if isinstance(self.screen, PlayerScreen):
+            p = self.player
+            self.screen.refresh_view(
+                p.state, p.queue, self.current_lyrics, self.device_name, p.sleep_at, self.loudness
+            )
+
+    # ── transport (shared by the main screen and the full-screen player) ──
+    @guarded
+    async def action_toggle(self) -> None:
+        if self.player and self.local and self.player.output is self.local and not self.local.mpv.running:
+            await self.player.use(self.local)  # mpv died: bring it back
+        if self.player:
+            await self.player.toggle()
+
+    @guarded
+    async def action_next(self) -> None:
+        if self.player:
+            await self.player.next()
+
+    @guarded
+    async def action_prev(self) -> None:
+        if self.player:
+            await self.player.prev()
+
+    @guarded
+    async def action_seek(self, delta: int) -> None:
+        if self.player:
+            await self.player.seek_by(delta)
+
+    @guarded
+    async def action_volume(self, delta: int) -> None:
+        if self.player:
+            await self.player.volume_by(delta)
+
+    async def seek_fraction(self, fraction: float) -> None:
+        if self.player and (track := self.player.state.track):
+            await self.player.seek(int(fraction * (self.player.state.duration_ms or track.duration_ms)))
+
+    @guarded
+    async def action_like_playing(self) -> None:
+        if (track := self.now_track) is not None:
+            await self.toggle_like(track)
+
+    @guarded
+    async def action_loudness(self) -> None:
+        await self.toggle_loudness()
+
+    def action_choose_output(self) -> None:
+        self.run_worker(self.choose_output(), exclusive=True, group="output")
+
+    # ── commands used by the screens ──
     async def toggle_like(self, track: Track) -> None:
         if self.library is None or self.player is None:
             return
         rating = None if track.liked else 10.0
-        try:
-            updated = await asyncio.to_thread(self.library.rate, track, rating)
-        except Exception as e:
-            self.notify(f"couldn't rate: {e}", severity="error")
-            return
+        updated = await asyncio.to_thread(self.library.rate, track, rating)
         self.player.replace_track(updated)
-        if isinstance(self.screen, MainScreen):
-            self.screen.replace_track(updated)
+        main = self._main()
+        if main is not None:
+            main.replace_track(updated)
         self.notify(("♥ liked " if updated.liked else "unliked ") + updated.title)
 
     async def toggle_loudness(self) -> None:
@@ -228,6 +297,7 @@ class TampApp(App):
         config.save(self.cfg)
         self.notify(f"loudness leveling {'on' if self.loudness else 'off'} (from the next track)")
 
+    @guarded
     async def choose_output(self) -> None:
         """Pick where music plays: this computer, or a Plex/Plexamp player (your phone…)."""
         options: list[tuple[str, str, str]] = [(THIS_DEVICE.id, THIS_DEVICE.name, "tamp's own player (mpv)")]

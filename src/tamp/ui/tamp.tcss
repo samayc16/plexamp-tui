@@ -1,6 +1,12 @@
+/* Monokai Pro */
 Screen {
     background: #2d2a2e;
     color: #fcfcfa;
+}
+
+#topbar {
+    height: 1;
+    background: #221f22;
 }
 
 #body {
@@ -18,6 +24,20 @@ Screen {
 
 #center {
     width: 1fr;
+}
+
+#page-header {
+    height: 7;
+    margin: 1 1 0 1;
+}
+
+#page-art {
+    width: 14;
+}
+
+#page-meta {
+    width: 1fr;
+    padding: 0 1;
 }
 
 #crumb {
@@ -53,25 +73,18 @@ Screen {
     margin-bottom: 1;
 }
 
-#np-info, #np-progress, #np-status {
+#np-info, #np-status {
     height: auto;
 }
 
 #np-progress {
+    height: 1;
     margin: 1 0;
 }
 
 #np-below {
     margin-top: 1;
     height: 1fr;
-}
-
-#hint {
-    height: 1;
-    dock: bottom;
-    offset-y: -1;
-    width: auto;
-    background: transparent;
 }
 
 OptionList > .option-list--option-highlighted {
@@ -82,6 +95,11 @@ OptionList:focus > .option-list--option-highlighted {
     background: #5b595c;
 }
 
+OptionList > .option-list--option-hover {
+    background: #363337;
+}
+
+/* first run */
 #signin, #pick {
     align: center middle;
     width: 100%;
@@ -112,8 +130,30 @@ OptionList:focus > .option-list--option-highlighted {
     margin-top: 1;
 }
 
-PinScreen, Prompt, Choose {
+/* pop-ups */
+PinScreen, Prompt, Choose, HelpScreen, InfoScreen {
     align: center middle;
+    background: #19181a 60%;
+}
+
+ContextMenu {
+    background: #19181a 30%;
+}
+
+#menu {
+    height: auto;
+    border: round #ff6188;
+    border-title-color: #ff6188;
+    border-title-style: bold;
+    background: #221f22;
+    padding: 0;
+}
+
+#menu-list {
+    height: auto;
+    border: none;
+    background: #221f22;
+    padding: 0;
 }
 
 #pin, #prompt, #choose {
@@ -129,4 +169,68 @@ PinScreen, Prompt, Choose {
     max-height: 16;
     border: none;
     margin-top: 1;
+}
+
+#help {
+    width: 90%;
+    max-width: 110;
+    height: 85%;
+    border: round #ff6188;
+    background: #221f22;
+    padding: 1 2;
+}
+
+#help-filter {
+    margin: 1 0;
+    border: round #403e41;
+}
+
+#info {
+    width: 64;
+    height: auto;
+    border: round #78dce8;
+    background: #221f22;
+    padding: 1 2;
+}
+
+#info-art {
+    margin: 1 0;
+}
+
+/* full-screen player (F) */
+#fp {
+    height: 1fr;
+    padding: 1 2;
+}
+
+#fp-left {
+    width: 1fr;
+    max-width: 70;
+    padding-right: 3;
+}
+
+#fp-art {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#fp-info, #fp-status {
+    height: auto;
+}
+
+#fp-progress {
+    height: 1;
+    margin: 1 0;
+}
+
+#fp-lyrics {
+    width: 1fr;
+    height: 1fr;
+    padding: 2 2 0 2;
+    border-left: solid #403e41;
+}
+
+#fp-hint {
+    height: 1;
+    dock: bottom;
 }

@@ -38,6 +38,8 @@ class Track:
     bitrate_kbps: int | None = None
     gain_db: float | None = None  # loudness leveling from Plex's sonic analysis
     has_lyrics: bool = False
+    album_id: str = ""
+    artist_id: str = ""
 
     @property
     def liked(self) -> bool:
