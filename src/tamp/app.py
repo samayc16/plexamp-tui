@@ -301,6 +301,12 @@ class TampApp(App):
     async def choose_output(self) -> None:
         """Pick where music plays: this computer, or a Plex/Plexamp player (your phone…)."""
         options: list[tuple[str, str, str]] = [(THIS_DEVICE.id, THIS_DEVICE.name, "tamp's own player (mpv)")]
+        if self.demo:  # what the picker looks like with a real account; just for show
+            options += [
+                ("demo-phone", "iPhone", "Plexamp · playing now"),
+                ("demo-mac", "MacBook", "Plexamp · this network"),
+                ("demo-pi", "Living room", "Plexamp headless"),
+            ]
         if not self.demo and self.server is not None:
             self.notify("looking for players…", timeout=2)
             try:
@@ -323,6 +329,9 @@ class TampApp(App):
 
     async def switch_output(self, device_id: str, quiet: bool = False) -> None:
         if self.player is None:
+            return
+        if device_id.startswith("demo-"):
+            self.notify("in the demo, other players are just for show: sign in to control yours")
             return
         resume = bool(self.player.state.track and not self.player.state.paused and not self.player.remote)
         if device_id == THIS_DEVICE.id or self.server is None:
