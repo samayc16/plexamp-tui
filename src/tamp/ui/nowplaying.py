@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import ClassVar
 
+from rich.style import Style
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
@@ -20,6 +21,7 @@ from tamp.queue import Queue
 from tamp.ui.fmt import CYAN, DIM, FG, GREEN, ORANGE, PINK, PURPLE, YELLOW, duration, fit
 
 BAR_FULL, BAR_EMPTY, KNOB = "━", "─", "●"
+LYRIC_LEAD_MS = 250  # land just before the line so you hear it start
 
 
 class Seek(Message):
@@ -66,12 +68,16 @@ def lyrics_text(lyrics: Lyrics, position_ms: int, height: int, width: int, big: 
     for i, line in enumerate(lyrics.lines[start : start + height], start=start):
         words = line.text or "♪"
         if lyrics.timed and i == current:
-            style = f"bold {YELLOW}"
+            colour, bold = YELLOW, True
         elif lyrics.timed and i < current:
-            style = DIM
+            colour, bold = DIM, False
         else:
-            style = FG
-        text.append(fit(words, width).rstrip() + "\n" + ("\n" if big else ""), style=style)
+            colour, bold = FG, False
+        meta = {}
+        if lyrics.timed and line.time_ms is not None:  # click a line to jump there
+            meta = {"@click": f"app.seek_to({max(0, line.time_ms - LYRIC_LEAD_MS)})"}
+        text.append(fit(words, width).rstrip(), style=Style(color=colour, bold=bold, meta=meta))
+        text.append("\n" + ("\n" if big else ""))
     return text
 
 

@@ -17,7 +17,7 @@
 
 **Playing**
 - Gapless playback through [mpv](https://mpv.io), with loudness leveling from Plex's own sonic analysis.
-- Synced lyrics beside the music, full size (`L`), or in a full-screen player with big art (`F`).
+- Synced lyrics beside the music, full size (`L`), or in a full-screen player with big art (`F`). Click a line to jump to that part of the song.
 - Radio from anything (`r`): sonically similar tracks, artist radio, album radio, plus your server's stations.
 - Plays are reported to Plex, so history, play counts and "recently played" stay right everywhere.
 

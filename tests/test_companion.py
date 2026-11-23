@@ -92,14 +92,25 @@ def test_create_play_queue_names_the_server_and_start(stub) -> None:
     assert path == "/player/playback/createPlayQueue"
     assert q["uri"] == "server://pms-1/com.plexapp.plugins.library/library/metadata/10,11,12"
     assert q["key"] == "/library/metadata/11"
-    assert (q["machineIdentifier"], q["address"], q["port"], q["protocol"]) == ("pms-1", "192.168.1.10", "32400", "http")
+    assert (q["machineIdentifier"], q["address"], q["port"], q["protocol"]) == (
+        "pms-1",
+        "192.168.1.10",
+        "32400",
+        "http",
+    )
 
 
 def test_timeline_and_identity(stub) -> None:
     c = Companion(stub.url, PLAYER_ID, "c", "t")
     stub.rating_key = "42"
     t = c.timeline()
-    assert t and (t.state, t.time_ms, t.rating_key, t.play_queue_id, t.volume) == ("playing", 12000, "42", "7", 80)
+    assert t and (t.state, t.time_ms, t.rating_key, t.play_queue_id, t.volume) == (
+        "playing",
+        12000,
+        "42",
+        "7",
+        80,
+    )
     assert c.identity() == PLAYER_ID
     assert Companion("http://127.0.0.1:9", PLAYER_ID, "c", "t", timeout=0.5).identity() is None
 
@@ -116,7 +127,9 @@ async def test_remote_output_plays_follows_and_pauses(stub) -> None:
     lib = DemoLibrary()
     tracks = [t for h in lib.home() if h.kind == "track" for t in h.items][:3]
     states = []
-    out = RemoteOutput(Device(PLAYER_ID, "iPhone"), FAKE_SERVER, lib, Companion(stub.url, PLAYER_ID, "c", "t"), states.append)
+    out = RemoteOutput(
+        Device(PLAYER_ID, "iPhone"), FAKE_SERVER, lib, Companion(stub.url, PLAYER_ID, "c", "t"), states.append
+    )
     await out.load(Queue().play(tracks, 1))
     state = await asyncio.to_thread(out._read_state, 0.0)
     assert state.track and state.track.id == tracks[1].id and not state.paused

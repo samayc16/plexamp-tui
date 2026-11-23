@@ -278,6 +278,12 @@ class TampApp(App):
         if self.player:
             await self.player.volume_by(delta)
 
+    @guarded
+    async def action_seek_to(self, position_ms: int) -> None:
+        """A lyric line was clicked."""
+        if self.player and self.player.state.track:
+            await self.player.seek(int(position_ms))
+
     async def seek_fraction(self, fraction: float) -> None:
         if self.player and (track := self.player.state.track):
             await self.player.seek(int(fraction * (self.player.state.duration_ms or track.duration_ms)))

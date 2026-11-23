@@ -68,6 +68,7 @@ HELP: list[tuple[str, list[tuple[str, str]]]] = [
             ("+ · -", "volume"),
             ("R", "repeat: off → all → one"),
             ("click the progress bar", "seek there"),
+            ("click a lyric line", "jump to that part of the song"),
         ],
     ),
     (
