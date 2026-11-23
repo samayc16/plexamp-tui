@@ -229,6 +229,9 @@ class DemoLibrary:
         middle = [t for t in self._all_tracks() if t.id not in (start.id, end.id)]
         return [start] + self._rng.sample(middle, k=min(6, len(middle))) + [end]
 
+    def track(self, track_id: str) -> Track:
+        return next(t for t in self._all_tracks() if t.id == track_id)
+
     def stream(self, track: Track) -> Stream:
         freq = 220 + (int.from_bytes(track.id.encode()[-2:], "big") % 12) * 22
         seconds = track.duration_ms / 1000

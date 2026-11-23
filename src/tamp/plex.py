@@ -161,89 +161,113 @@ def connect(resource: MyPlexResource) -> PlexServer:
     return resource.connect(timeout=TIMEOUT)
 
 
-def players(token: str) -> list[tuple[Device, MyPlexResource]]:
-    """Plex/Plexamp players on this account that can be remote-controlled."""
-    found = []
-    for r in account(token).resources():
-        provides = r.provides or ""
-        if "player" in provides and "server" not in provides:
-            found.append((Device(id=r.clientIdentifier, name=r.name, product=r.product or ""), r))
-    return sorted(found, key=lambda pair: pair[0].name.lower())
-
-
 def music_sections(server: PlexServer) -> list:
     return [s for s in server.library.sections() if s.type == "artist"]
 
 
 # ── Remote control ────────────────────────────────────────────────────
-LOCAL_PLAYER = "http://127.0.0.1:32500"  # Plexamp on this computer, when remote control is on
+LOCAL_PLAYER = "http://127.0.0.1:32500"  # Plexamp on this computer, when its Remote Control is on
 
 
-def local_player(token: str, known: set[str]):
-    """Plexamp (or another Plex player) on this machine that accepts remote control, or None.
-    The token is only sent once the player there proves to be one of `known` (your account's
-    devices): any local process could be listening on that port."""
-    from plexapi.client import PlexClient
+@dataclass(frozen=True)
+class PlayerInfo:
+    device: Device
+    urls: tuple[str, ...]  # where to reach its Companion API, most likely first
+    trusted: bool  # addresses from plex.tv for your account (safe to send the token to)
 
+
+def players(token: str) -> list[PlayerInfo]:
+    """Plex/Plexamp players registered on your account, with their LAN addresses."""
+    found = []
+    for r in account(token).resources():
+        provides = r.provides or ""
+        if "player" not in provides or "server" in provides:
+            continue
+        urls = tuple(c.uri for c in sorted(r.connections, key=lambda c: (not c.local,)) if not c.relay)
+        device = Device(id=r.clientIdentifier, name=r.name, product=r.product or "")
+        found.append(PlayerInfo(device, urls, trusted=True))
+    return found
+
+
+def gdm_players(timeout: float = 1.5) -> dict[str, PlayerInfo]:
+    """Players that answer Plex's LAN discovery broadcast (GDM)."""
+    from plexapi.gdm import GDM
+
+    found: dict[str, PlayerInfo] = {}
     try:
-        r = requests.get(f"{LOCAL_PLAYER}/resources", headers={"Accept": "application/xml"}, timeout=2)
-        player = ElementTree.fromstring(r.content).find("Player")
-        if player is None or player.get("machineIdentifier") not in known:
-            return None
-        return PlexClient(baseurl=LOCAL_PLAYER, token=token, timeout=2)
+        gdm = GDM()
+        gdm.scan(scan_for_clients=True, timeout=timeout)
     except Exception:
+        return found
+    for entry in gdm.entries:
+        data, (host, _port) = entry.get("data", {}), entry.get("from", ("", 0))
+        ident, port = data.get("Resource-Identifier"), data.get("Port")
+        if ident and port and host:
+            device = Device(id=ident, name=data.get("Name", "player"), product=data.get("Product", ""))
+            found[ident] = PlayerInfo(device, (f"http://{host}:{port}",), trusted=False)
+    return found
+
+
+def _companion(url: str, device_id: str, client_id: str, token: str, trusted: bool):
+    """A Companion client for `url` if the player there is `device_id`. The token only goes to
+    addresses plex.tv gave us for your devices, or to a player that answered without it."""
+    from tamp.companion import Companion
+
+    probe = Companion(url, device_id, client_id, token if trusted else "", timeout=2)
+    if probe.identity() != device_id:
         return None
+    return Companion(url, device_id, client_id, token)
 
 
-def list_players(token: str, server: PlexServer) -> list[Device]:
-    """Every player we could show or control: Plexamp here, players on the account, and
-    whatever is playing on the server right now (your phone shows up while it plays)."""
+def list_players(client_id: str, token: str, server: PlexServer) -> list[Device]:
+    """Everything you could play on or follow: Plexamp here, your account's players, players
+    on the LAN, and whatever is playing on the server right now (your phone, while it plays)."""
     found: dict[str, Device] = {}
     account_players = players(token)
-    known = {d.id for d, _ in account_players}
-    if (client := local_player(token, known)) is not None:
-        found[client.machineIdentifier] = Device(
-            id=client.machineIdentifier, name=f"{client.title} (this computer)", product=client.product or ""
+    known = {p.device.id for p in account_players}
+    local = next(
+        (p for p in account_players if _companion(LOCAL_PLAYER, p.device.id, client_id, token, True)), None
+    )
+    if local is not None:
+        found[local.device.id] = Device(
+            local.device.id, f"{local.device.name} (this computer)", local.device.product
         )
-    for device, _ in account_players:
-        found.setdefault(device.id, device)
+    for p in account_players:
+        found.setdefault(p.device.id, p.device)
+    for ident, p in gdm_players().items():
+        if ident in known or ident not in found:
+            found.setdefault(ident, p.device)
     for item in server.sessions():
-        if item.type != "track" or item.player is None:
-            continue
-        p = item.player
-        found[p.machineIdentifier] = Device(
-            id=p.machineIdentifier,
-            name=p.title or p.product or "player",
-            product=f"{p.product or ''} · playing now".strip(" ·"),
-        )
+        if item.type == "track" and item.player is not None:
+            pl = item.player
+            name = (
+                found[pl.machineIdentifier].name
+                if pl.machineIdentifier in found
+                else (pl.title or pl.product or "player")
+            )
+            found[pl.machineIdentifier] = Device(
+                pl.machineIdentifier, name, f"{pl.product or ''} · playing now".strip(" ·")
+            )
     found.pop(plexapi.X_PLEX_IDENTIFIER, None)  # tamp itself
     return list(found.values())
 
 
-def output_for(device_id: str, token: str, server: PlexServer, library):
-    """A RemoteOutput for a player: with a client if any route to it accepts commands
-    (directly on this machine, via its plex.tv connections, or proxied by the server),
-    otherwise follow-only."""
+def output_for(device_id: str, client_id: str, token: str, server: PlexServer, library):
+    """A RemoteOutput for a player: controllable if any address reaches its Companion API
+    (this machine, its plex.tv addresses, or the LAN broadcast), otherwise follow-only."""
     from tamp.output import RemoteOutput
 
-    devices = {d.id: d for d in list_players(token, server)}
-    device = devices.get(device_id, Device(id=device_id, name="player"))
-    client = None
-    account_players = players(token)
-    local = local_player(token, {d.id for d, _ in account_players})
-    if local is not None and local.machineIdentifier == device_id:
-        client = local
-    if client is None:
-        resource = next((r for _, r in account_players if r.clientIdentifier == device_id), None)
-        if resource is not None:
-            try:
-                client = resource.connect(timeout=3)
-            except Exception:
-                client = None
-    if client is None:
-        try:
-            client = next(c for c in server.clients() if c.machineIdentifier == device_id)
-            client.proxyThroughServer(True, server)
-        except Exception:
-            client = None
-    return RemoteOutput(device, server, library, client)
+    account_players = {p.device.id: p for p in players(token)}
+    info = account_players.get(device_id)
+    routes: list[tuple[str, bool]] = [(LOCAL_PLAYER, True)]
+    if info is not None:
+        routes += [(url, True) for url in info.urls]
+    lan = gdm_players().get(device_id)
+    if lan is not None:
+        routes += [(url, False) for url in lan.urls]
+    companion = None
+    for url, trusted in routes:
+        if (companion := _companion(url, device_id, client_id, token, trusted)) is not None:
+            break
+    device = info.device if info else (lan.device if lan else Device(id=device_id, name="player"))
+    return RemoteOutput(device, server, library, companion)

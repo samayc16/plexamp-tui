@@ -238,9 +238,11 @@ class LocalOutput:
 class RemoteOutput:
     """A Plex/Plexamp player somewhere else: your phone, a desktop or headless Plexamp, a TV.
 
-    What it's playing comes from the server's session list, which every Plex player reports
-    to; between reports the position is extrapolated so lyrics stay in sync. Controls go through
-    plexapi's PlexClient when the player accepts remote control; without one it's follow-only."""
+    With a Companion client (the player is on this network and accepts remote control) its own
+    timeline says what it's playing and every control works. Without one, or when it stops
+    answering (your phone left the Wi-Fi), the server's session list still says what it plays:
+    every Plex player reports there. Between reports the position is extrapolated so synced
+    lyrics stay in time."""
 
     POLL_S = 1.0
 
@@ -249,31 +251,72 @@ class RemoteOutput:
         device: Device,
         server,
         library,
-        client=None,
+        companion=None,
         on_change: Callable[[Playback], None] | None = None,
     ) -> None:
         self.device = device
         self.server = server
         self.library = library
-        self.client = client
+        self.companion = companion
         self.on_change = on_change or (lambda _state: None)
         self.queue = Queue()
         self.state = Playback()
+        self.play_queue_id = ""
         self._poller: asyncio.Task | None = None
-        self._play_queue = None
+        self._tracks: dict[str, Track] = {}
         self._seen: tuple[str, int, bool, float] | None = None  # track id, offset, playing, when
 
     @property
     def controllable(self) -> bool:
-        return self.client is not None
+        return self.companion is not None
 
     def _require(self):
-        if self.client is None:
-            raise ReadOnly(f"{self.device.name} doesn't accept remote control: showing what it plays")
-        return self.client
+        if self.companion is None:
+            raise ReadOnly(
+                f"{self.device.name} isn't reachable for remote control (same Wi-Fi? Plexamp's "
+                "Remote Control setting on?): showing what it plays"
+            )
+        return self.companion
 
     async def start(self) -> None:
         self._poller = asyncio.create_task(self._poll())
+
+    async def _poll(self) -> None:
+        while True:
+            try:
+                state = await asyncio.to_thread(self._read_state, time.monotonic())
+                if state is not None:
+                    self.state = state
+                    self.on_change(state)
+            except Exception:  # a flaky network shouldn't take the UI down; try again next second
+                pass
+            await asyncio.sleep(self.POLL_S)
+
+    def _read_state(self, now: float) -> Playback | None:
+        if self.companion is not None:
+            try:
+                timeline = self.companion.timeline()
+            except Exception:
+                timeline = None  # gone quiet (asleep, off the Wi-Fi): fall back to the server
+            if timeline is not None:
+                self.play_queue_id = timeline.play_queue_id or self.play_queue_id
+                track = self._track(timeline.rating_key) if timeline.rating_key else None
+                return self._playback(
+                    track, timeline.time_ms, timeline.state == "playing", now, timeline.volume
+                )
+        item, player = self._session()
+        if item is None:
+            self._seen = None
+            return Playback(volume=self.state.volume)
+        track = self.library.track_from(item)
+        return self._playback(
+            track, int(item.viewOffset or 0), (player.state or "") == "playing", now, self.state.volume
+        )
+
+    def _track(self, rating_key: str) -> Track:
+        if rating_key not in self._tracks:
+            self._tracks[rating_key] = self.library.track(rating_key)
+        return self._tracks[rating_key]
 
     def _session(self):
         for item in self.server.sessions():
@@ -282,23 +325,19 @@ class RemoteOutput:
                 return item, player
         return None, None
 
-    async def _poll(self) -> None:
-        while True:
-            try:
-                item, player = await asyncio.to_thread(self._session)
-                self.state = self._state_from(item, player, time.monotonic())
-                self.on_change(self.state)
-            except Exception:  # a flaky network shouldn't take the UI down; try again next second
-                pass
-            await asyncio.sleep(self.POLL_S)
-
     def _state_from(self, item, player, now: float) -> Playback:
+        """State from a server session (kept separate for tests)."""
         if item is None:
             self._seen = None
             return Playback(volume=self.state.volume)
         track = self.library.track_from(item)
-        offset = int(item.viewOffset or 0)
-        playing = (player.state or "") == "playing"
+        return self._playback(
+            track, int(item.viewOffset or 0), (player.state or "") == "playing", now, self.state.volume
+        )
+
+    def _playback(self, track: Track | None, offset: int, playing: bool, now: float, volume: int) -> Playback:
+        if track is None:
+            return Playback(volume=volume)
         if self._seen is None or self._seen[:3] != (track.id, offset, playing):
             self._seen = (track.id, offset, playing, now)  # a new report: restart the clock
         position = offset + (int((now - self._seen[3]) * 1000) if playing else 0)
@@ -309,74 +348,67 @@ class RemoteOutput:
             position_ms=position,
             duration_ms=track.duration_ms,
             paused=not playing,
-            volume=self.state.volume,
+            volume=volume,
             index=index,
         )
 
     async def load(self, queue: Queue) -> None:
-        """Hand the player a new play queue: a window of tracks around the current one."""
-        from plexapi.playqueue import PlayQueue
-
-        client = self._require()
+        """Hand the player a window of tracks around the current one; it builds the queue."""
+        companion = self._require()
         self.queue = queue
         if queue.track is None:
             await self.stop()
             return
         start = max(0, queue.current - REMOTE_WINDOW // 4)
-        window = queue.tracks[start : start + REMOTE_WINDOW]
-
-        def begin() -> None:
-            items = self.server.fetchItems([int(t.id) for t in window])
-            by_id = {str(i.ratingKey): i for i in items}
-            ordered = [by_id[t.id] for t in window if t.id in by_id]
-            first = by_id.get(queue.track.id, ordered[0])
-            self._play_queue = PlayQueue.create(self.server, ordered, startItem=first)
-            client.playMedia(self._play_queue)
-
-        await asyncio.to_thread(begin)
+        window = [t.id for t in queue.tracks[start : start + REMOTE_WINDOW]]
+        await asyncio.to_thread(companion.play_queue, self.server, window, queue.track.id)
 
     async def queue_changed(self, queue: Queue) -> None:
-        """Additions go into the player's own play queue; nothing restarts."""
+        """Additions go into the player's own play queue on the server; nothing restarts."""
         old = self.queue
         self.queue = queue
-        if self.client is None or self._play_queue is None:
-            return  # following only, or we didn't start this queue
+        if self.companion is None or not self.play_queue_id:
+            return  # following only, or no queue to add to yet
         known = {t.id for t in old.tracks}
         added = [t for t in queue.tracks if t.id not in known]
         if not added:
             return
         play_next = tuple(added) == queue.tracks[queue.current + 1 : queue.current + 1 + len(added)]
+        companion, pq_id = self.companion, self.play_queue_id
 
         def push() -> None:
+            from plexapi.playqueue import PlayQueue
+
+            pq = PlayQueue.get(self.server, int(pq_id))
             for t in reversed(added) if play_next else added:
-                self._play_queue.addItem(self.server.fetchItem(int(t.id)), playNext=play_next, refresh=False)
-            self.client.refreshPlayQueue(self._play_queue.playQueueID)
+                pq.addItem(self.server.fetchItem(int(t.id)), playNext=play_next, refresh=False)
+            companion.refresh_play_queue(pq_id)
 
         await asyncio.to_thread(push)
 
     async def skip(self, step: int) -> None:
-        client = self._require()
-        await asyncio.to_thread(client.skipNext if step > 0 else client.skipPrevious, "music")
+        await asyncio.to_thread(self._require().command, "skipNext" if step > 0 else "skipPrevious")
 
     async def toggle(self) -> None:
-        client = self._require()
-        await asyncio.to_thread(client.play if self.state.paused else client.pause, "music")
+        await asyncio.to_thread(self._require().command, "play" if self.state.paused else "pause")
 
     async def seek(self, position_ms: int) -> None:
-        await asyncio.to_thread(self._require().seekTo, max(0, position_ms), "music")
+        await asyncio.to_thread(self._require().seek, max(0, position_ms))
 
     async def set_volume(self, volume: int) -> None:
         volume = max(0, min(100, volume))
-        await asyncio.to_thread(self._require().setVolume, volume, "music")
+        await asyncio.to_thread(self._require().set_parameters, volume=volume)
         self.state = replace(self.state, volume=volume)
 
     async def set_repeat(self, mode: str) -> None:
-        if self.client is not None:
-            await asyncio.to_thread(self.client.setRepeat, {"off": 0, "one": 1, "all": 2}[mode], "music")
+        if self.companion is not None:
+            await asyncio.to_thread(
+                self.companion.set_parameters, repeat={"off": 0, "one": 1, "all": 2}[mode]
+            )
 
     async def stop(self) -> None:
-        if self.client is not None:
-            await asyncio.to_thread(self.client.stop, "music")
+        if self.companion is not None:
+            await asyncio.to_thread(self.companion.command, "stop")
 
     async def close(self) -> None:
         if self._poller:

@@ -304,7 +304,9 @@ class TampApp(App):
         if not self.demo and self.server is not None:
             self.notify("looking for players…", timeout=2)
             try:
-                for device in await asyncio.to_thread(plex.list_players, self.cfg.user_token, self.server):
+                for device in await asyncio.to_thread(
+                    plex.list_players, self.cfg.client_id, self.cfg.user_token, self.server
+                ):
                     options.append((device.id, device.name, device.product))
             except Exception as e:
                 self.notify(f"couldn't list players: {e}", severity="warning")
@@ -330,7 +332,12 @@ class TampApp(App):
         else:
             try:
                 output = await asyncio.to_thread(
-                    plex.output_for, device_id, self.cfg.user_token, self.server, self.library
+                    plex.output_for,
+                    device_id,
+                    self.cfg.client_id,
+                    self.cfg.user_token,
+                    self.server,
+                    self.library,
                 )
             except Exception as e:
                 if not quiet:
@@ -341,7 +348,7 @@ class TampApp(App):
             self.device_name = output.device.name
             if not output.controllable and not quiet:
                 self.notify(
-                    "following this player: now playing and lyrics; it doesn't accept remote control",
+                    "following this player: now playing and lyrics (it isn't reachable for remote control from here)",
                     timeout=8,
                 )
         self.cfg = replace(self.cfg, device_id=device_id)
