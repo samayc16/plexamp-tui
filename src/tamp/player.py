@@ -12,8 +12,8 @@ from dataclasses import asdict, replace
 from tamp import config
 from tamp.library import Library
 from tamp.models import Playback, Track
-from tamp.output import LocalOutput, Output, ReadOnly, RemoteOutput
-from tamp.queue import Queue
+from tamp.output import LocalOutput, Output, ReadOnly, RemoteOutput, TaskSet
+from tamp.queue import REPEAT_MODES, Queue
 
 REPORT_EVERY_S = 10
 SCROBBLE_AT = 0.9  # Plex counts a play at 90%
@@ -38,6 +38,7 @@ class Player:
         self._scrobbled: str | None = None
         self._sleep_task: asyncio.Task | None = None
         self.sleep_at: float | None = None
+        self._tasks = TaskSet(lambda _m: None)  # reporting is best-effort: failures stay quiet
 
     # ── outputs ──
     async def use(self, output: Output, resume: bool = False) -> None:
@@ -77,6 +78,8 @@ class Player:
 
     # ── events from the output ──
     def changed(self, state: Playback) -> None:
+        if self.remote and 0 <= state.index != self.queue.current:
+            self.queue = self.queue.jump(state.index)  # the remote player moved through our queue
         self.state = state
         self._maybe_report(state)
         key = (state.track.id if state.track else None, state.paused)
@@ -88,12 +91,12 @@ class Player:
     def advanced(self) -> None:
         """Local mpv moved to the prefetched next track."""
         self.queue = self.queue.advanced()
-        if isinstance(self.output, LocalOutput):
+        self._scrobbled = None
+        if isinstance(self.output, LocalOutput):  # it fixes up its own playlist afterwards
             self.output.queue = self.queue
             self.output.state = replace(
                 self.output.state, track=self.queue.track, index=self.queue.current, position_ms=0
             )
-            asyncio.get_running_loop().create_task(self.output.queue_changed(self.queue))
         self._save_queue()
         self.changed(self.output.state if self.output else self.state)
 
@@ -111,15 +114,13 @@ class Player:
         if now - self._reported_at >= REPORT_EVERY_S:
             self._reported_at = now
             status = "paused" if state.paused else "playing"
-            asyncio.get_running_loop().create_task(
-                self._background(self.library.report, track, status, state.position_ms)
-            )
+            self._tasks.spawn(self._background(self.library.report, track, status, state.position_ms))
 
     def _scrobble(self, track: Track) -> None:
         if self._scrobbled == track.id or self.remote:
             return
         self._scrobbled = track.id
-        asyncio.get_running_loop().create_task(self._background(self.library.scrobble, track))
+        self._tasks.spawn(self._background(self.library.scrobble, track))
 
     @staticmethod
     async def _background(fn, *args) -> None:
@@ -141,9 +142,9 @@ class Player:
         await self._mutate(self.queue.append(tracks))
 
     async def remove(self, index: int) -> None:
-        if index == self.queue.current:
+        if index == self.queue.current and len(self.queue.tracks) > 1:
             await self.jump(index + 1 if index + 1 < len(self.queue.tracks) else index - 1)
-        await self._mutate(self.queue.remove(index))
+        await self._mutate(self.queue.remove(index))  # an empty queue stops the output
 
     async def move(self, index: int, to: int) -> None:
         await self._mutate(self.queue.move(index, to))
@@ -169,12 +170,16 @@ class Player:
         await self._load()
 
     async def next(self) -> None:
+        """Skip to the next track (repeat-one only repeats when a track ends by itself)."""
         if self.remote and self.output:
-            await self._guard(self.output.skip(1))
+            await self._guard(self.output.skip(1))  # type: ignore[attr-defined]
             return
-        nxt = self.queue.advanced()
-        if nxt.current != self.queue.current or self.queue.repeat == "one":
-            await self.jump(nxt.current)
+        nxt = self.queue.current + 1
+        if nxt >= len(self.queue.tracks):
+            if self.queue.repeat != "all" or not self.queue.tracks:
+                return
+            nxt = 0
+        await self.jump(nxt)
 
     async def prev(self) -> None:
         """Restart the track if we're more than 3 s in, else go back one."""
@@ -259,10 +264,11 @@ class Player:
         except TypeError:  # saved by an older version
             return
         if tracks:
+            repeat = data.get("repeat", "off")
             self.queue = Queue(
                 tracks=tracks,
                 current=min(int(data.get("current", 0)), len(tracks) - 1),
-                repeat=data.get("repeat", "off"),
+                repeat=repeat if repeat in REPEAT_MODES else "off",
                 source=data.get("source", ""),
             )
 

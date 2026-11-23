@@ -12,12 +12,15 @@ from xml.etree import ElementTree
 from plexapi.server import PlexServer
 
 from tamp import config, lrc
-from tamp.models import Album, Artist, Playlist, SearchResults, Stream, Track
+from tamp.models import Album, Artist, ArtistOverview, Hub, Playlist, SearchResults, Stream, Track
 
 
 class Library(Protocol):
     name: str
 
+    def home(self) -> list[Hub]: ...
+    def artist_overview(self, artist: Artist) -> ArtistOverview: ...
+    def details(self, track: Track) -> list[tuple[str, str]]: ...
     def artists(self) -> list[Artist]: ...
     def albums(self, artist: Artist | None = None) -> list[Album]: ...
     def tracks(self, album: Album) -> list[Track]: ...
@@ -122,6 +125,98 @@ class PlexLibrary:
         return obj
 
     # ── browsing ──
+    def home(self) -> list[Hub]:
+        """The section's hubs, the rows Plexamp's home is made of."""
+        convert = {"album": self._album, "track": self._track, "artist": self._artist}
+        hubs = []
+        for hub in self.section.hubs():
+            try:
+                items = hub.items()[:14]
+            except Exception:
+                continue
+            kind = "station" if "station" in (getattr(hub, "context", "") or "") else hub.type
+            if kind in convert:
+                converted = [convert[kind](i) for i in items if getattr(i, "type", "") == kind]
+            elif kind in ("playlist", "station"):
+                converted = [self._playlist(i, radio=kind == "station") for i in items]
+            else:
+                continue
+            if converted:
+                hubs.append(Hub(title=hub.title, kind=kind, items=tuple(converted)))
+        return hubs
+
+    def artist_overview(self, artist: Artist) -> ArtistOverview:
+        a = self._obj(artist.id)
+        try:
+            popular = [self._track(t) for t in a.popularTracks()[:10]]
+        except Exception:  # older servers have no popularity data
+            popular = []
+        albums, singles = [], []
+        for album in sorted(a.albums(), key=lambda x: x.year or 0, reverse=True):
+            formats = " ".join(s.tag for s in getattr(album, "subformats", []) or []).lower()
+            small = (_int(getattr(album, "leafCount", None)) or 99) <= 3
+            (singles if "single" in formats or "ep" in formats.split() or small else albums).append(
+                self._album(album)
+            )
+        try:
+            similar = [self._artist(s) for s in a.sonicallySimilar(limit=12)]
+        except Exception:
+            similar = []
+        return ArtistOverview(tuple(popular), tuple(albums), tuple(singles), tuple(similar))
+
+    def details(self, track: Track) -> list[tuple[str, str]]:
+        t = self.server.fetchItem(int(track.id))
+        media = t.media[0] if t.media else None
+        audio = (
+            next((s for s in media.parts[0].streams if s.streamType == 2), None)
+            if media and media.parts
+            else None
+        )
+        rows = [
+            ("Title", t.title),
+            ("Artist", t.originalTitle or t.grandparentTitle or ""),
+            (
+                "Album",
+                f"{t.parentTitle or ''}" + (f" ({t.parentYear})" if getattr(t, "parentYear", None) else ""),
+            ),
+            (
+                "Track",
+                f"{t.index or '?'}" + (f" · disc {t.parentIndex}" if getattr(t, "parentIndex", None) else ""),
+            ),
+            (
+                "Format",
+                " · ".join(
+                    x
+                    for x in (
+                        (media.audioCodec or "").upper() if media else "",
+                        f"{media.bitrate} kbps" if media and media.bitrate else "",
+                        f"{audio.samplingRate / 1000:g} kHz"
+                        if audio and getattr(audio, "samplingRate", None)
+                        else "",
+                        f"{audio.bitDepth}-bit" if audio and getattr(audio, "bitDepth", None) else "",
+                        f"{media.audioChannels} ch" if media and media.audioChannels else "",
+                    )
+                    if x
+                ),
+            ),
+            (
+                "Loudness",
+                f"{audio.gain} dB gain"
+                if audio and getattr(audio, "gain", None) is not None
+                else "not analysed",
+            ),
+            ("Plays", str(t.viewCount or 0)),
+            ("Last played", t.lastViewedAt.strftime("%Y-%m-%d") if t.lastViewedAt else "never"),
+            ("Added", t.addedAt.strftime("%Y-%m-%d") if t.addedAt else ""),
+            (
+                "Rating",
+                "♥ liked"
+                if (t.userRating or 0) >= 10
+                else (f"{t.userRating / 2:g}★" if t.userRating else ""),
+            ),
+        ]
+        return [(k, v) for k, v in rows if v]
+
     def artists(self) -> list[Artist]:
         return [self._artist(a) for a in self.section.all(libtype="artist", sort="titleSort")]
 

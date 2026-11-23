@@ -137,3 +137,102 @@ async def test_mpv_plays_gapless_into_the_next_track(tmp_path) -> None:
         assert player.queue.current == 1
     finally:
         await local.close()
+
+
+class ShortToneLibrary(DemoLibrary):
+    def stream(self, track: Track) -> Stream:
+        return Stream(url="av://lavfi:sine=frequency=330:duration=0.7,volume=0.05")
+
+
+async def _local(tmp_path, library) -> tuple[Player, LocalOutput, asyncio.Queue]:
+    events: asyncio.Queue = asyncio.Queue()
+    player = Player(library, lambda s, q: None)
+    local: LocalOutput
+
+    def on_advance() -> None:
+        player.advanced()
+        events.put_nowait(player.queue.current)
+
+    mpv = Mpv(tmp_path / "mpv.sock", lambda msg: local.handle_event(msg))
+    local = LocalOutput(player.library, mpv, player.changed, on_advance, player.finished)
+    await player.use(local)
+    await mpv.set("volume", 0)
+    return player, local, events
+
+
+@pytest.mark.skipif(shutil.which("mpv") is None, reason="needs mpv")
+async def test_gapless_advances_through_every_track(tmp_path) -> None:
+    player, local, events = await _local(tmp_path, ShortToneLibrary())
+    try:
+        await player.play(tracks(4), 0)
+        seen = [await asyncio.wait_for(events.get(), timeout=10) for _ in range(3)]
+        assert seen == [1, 2, 3]
+        assert len(await local.mpv.get("playlist")) <= 2  # always [current, next]
+    finally:
+        await local.close()
+
+
+@pytest.mark.skipif(shutil.which("mpv") is None, reason="needs mpv")
+async def test_play_next_after_an_advance_keeps_the_playing_track(tmp_path) -> None:
+    player, local, events = await _local(tmp_path, ShortToneLibrary())
+    try:
+        await player.play(tracks(4), 0)
+        await asyncio.wait_for(events.get(), timeout=10)
+        await asyncio.sleep(0.2)
+        extra = Track(id="x", title="extra", artist="a", album="b", duration_ms=1000)
+        await player.play_next([extra])
+        playing = await local.mpv.get("playlist-pos")
+        assert playing == 0 and player.queue.track and player.queue.track.id == "1"
+        assert player.queue.tracks[2].id == "x"
+    finally:
+        await local.close()
+
+
+@pytest.mark.skipif(shutil.which("mpv") is None, reason="needs mpv")
+async def test_removing_the_only_track_stops(tmp_path) -> None:
+    player, local, _ = await _local(tmp_path, ToneLibrary())
+    try:
+        await player.play(tracks(1), 0)
+        await player.remove(0)
+        assert await local.mpv.get("idle-active") is True
+    finally:
+        await local.close()
+
+
+@pytest.mark.skipif(shutil.which("mpv") is None, reason="needs mpv")
+async def test_mpv_restarts_after_a_crash(tmp_path) -> None:
+    import os
+    import signal
+
+    player, local, _ = await _local(tmp_path, ToneLibrary())
+    try:
+        os.kill(local.mpv._process.pid, signal.SIGKILL)
+        for _ in range(50):
+            if not local.mpv.running:
+                break
+            await asyncio.sleep(0.05)
+        assert not local.mpv.running
+        await player.use(local)  # starts a fresh mpv
+        await player.play(tracks(1), 0)
+        assert await local.mpv.get("idle-active") is False
+    finally:
+        await local.close()
+
+
+def test_remote_position_ignores_time_spent_paused() -> None:
+    from types import SimpleNamespace
+
+    from tamp.output import RemoteOutput
+
+    class Lib:
+        def track_from(self, item):
+            return Track(id="1", title="t", artist="a", album="b", duration_ms=300_000)
+
+    out = RemoteOutput(Device(id="phone", name="Phone"), server=None, library=Lib())
+    item = SimpleNamespace(viewOffset=60_000)
+    paused = SimpleNamespace(state="paused")
+    playing = SimpleNamespace(state="playing")
+    assert out._state_from(item, paused, now=100.0).position_ms == 60_000
+    # resumed 2 s later; the server still reports the paused offset
+    assert out._state_from(item, playing, now=102.0).position_ms == 60_000
+    assert out._state_from(item, playing, now=103.5).position_ms == 61_500

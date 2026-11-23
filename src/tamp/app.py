@@ -98,16 +98,19 @@ class TampApp(App):
                 choice = await self.push_screen_wait(PickScreen("Who's listening?", user_rows(users)))
                 user = users[max(0, choice)]
             user_token, error = token, ""
-            if user and not user.admin:
-                while True:
-                    pin = await self.push_screen_wait(PinScreen(user.title, error)) if user.protected else ""
-                    try:
-                        user_token = await asyncio.to_thread(
-                            plex.switch_user, cfg.client_id, token, user, pin
-                        )
-                        break
-                    except plex.WrongPin:
-                        error = "wrong PIN, try again"
+            while user and not user.admin:
+                pin = ""
+                if user.protected:
+                    pin = await self.push_screen_wait(PinScreen(user.title, error))
+                    if not pin:  # escape: pick someone else
+                        choice = await self.push_screen_wait(PickScreen("Who's listening?", user_rows(users)))
+                        user, error = users[max(0, choice)], ""
+                        continue
+                try:
+                    user_token = await asyncio.to_thread(plex.switch_user, cfg.client_id, token, user, pin)
+                    break
+                except plex.WrongPin:
+                    error = "wrong PIN, try again"
             cfg = replace(cfg, user_token=user_token, user_title=user.title if user else "")
             config.save(cfg)
 
@@ -124,7 +127,7 @@ class TampApp(App):
             resource = resources[choice]
         self.notify(f"connecting to {resource.name}…", timeout=3)
         self.server = await asyncio.to_thread(plex.connect, resource)
-        sections = plex.music_sections(self.server)
+        sections = await asyncio.to_thread(plex.music_sections, self.server)
         if not sections:
             raise RuntimeError(f"{resource.name} has no music library")
         section_id = cfg.section_id
@@ -142,6 +145,9 @@ class TampApp(App):
 
     # ── events ──
     def on_mpv_event(self, msg: dict) -> None:
+        if msg.get("event") == "shutdown" and self.player and self.player.output is self.local:
+            self.notify("mpv stopped unexpectedly: press space to start it again", severity="warning")
+            return
         if msg.get("event") == "client-message":
             args = msg.get("args") or []
             if len(args) == 2 and args[0] == "tamp" and args[1] in CLI_COMMANDS and self.player:

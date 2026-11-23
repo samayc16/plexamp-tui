@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import signal
+import stat
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -31,6 +32,17 @@ def short_socket(path: Path) -> Path:
         return path
     digest = hashlib.sha1(str(path).encode()).hexdigest()[:12]
     return Path(tempfile.gettempdir()) / f"tamp-{os.getuid()}" / f"{digest}.sock"
+
+
+def private_dir(path: Path) -> None:
+    """Create `path` as 0700 and refuse one that someone else owns or others can write to
+    (a shared /tmp must not let another user plant our socket or pidfile)."""
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    info = os.lstat(path)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+        raise MpvError(f"{path} isn't a directory owned by you")
+    if info.st_mode & 0o077:
+        os.chmod(path, 0o700)
 
 
 class Mpv:
@@ -56,7 +68,7 @@ class Mpv:
             return
         if not self.available():
             raise MpvError("mpv isn't installed (brew install mpv / apt install mpv)")
-        self.socket.parent.mkdir(parents=True, exist_ok=True)
+        private_dir(self.socket.parent)
         if await self._socket_alive() and not self._reap_orphan():
             raise MpvError("another tamp is already running (its mpv socket is in use)")
         with contextlib.suppress(FileNotFoundError):
@@ -101,6 +113,8 @@ class Mpv:
     def _reap_orphan(self) -> bool:
         """An mpv whose tamp died (closed terminal, killed pane): stop it and take over."""
         try:
+            if os.lstat(self._pidfile).st_uid != os.getuid():
+                return False  # not ours: never act on it
             pids = json.loads(self._pidfile.read_text())
             owner, mpv = int(pids["owner"]), int(pids["mpv"])
         except (OSError, ValueError, KeyError, TypeError):
@@ -133,11 +147,18 @@ class Mpv:
                 if not fut.done():
                     fut.set_result(msg)
             elif "event" in msg:
-                self.on_event(msg)
+                try:
+                    self.on_event(msg)
+                except Exception:  # a bug in a handler must not stop us reading mpv
+                    pass
+        # mpv went away (crash, killed): forget it so start() launches a new one
+        self._writer = None
         for fut in self._pending.values():
             if not fut.done():
                 fut.set_exception(MpvError("mpv exited"))
-        self.on_event({"event": "shutdown"})
+        self._pending.clear()
+        with contextlib.suppress(Exception):
+            self.on_event({"event": "shutdown"})
 
     async def command(self, *args: Any) -> Any:
         if self._writer is None:

@@ -67,6 +67,23 @@ class SearchResults:
 
 
 @dataclass(frozen=True)
+class Hub:
+    """A row on the home page: "Recently played", "Stations", "More from your library"…"""
+
+    title: str
+    kind: str  # album track artist playlist station
+    items: tuple = ()
+
+
+@dataclass(frozen=True)
+class ArtistOverview:
+    popular: tuple[Track, ...] = ()
+    albums: tuple[Album, ...] = ()
+    singles: tuple[Album, ...] = ()  # singles and EPs
+    similar: tuple[Artist, ...] = ()
+
+
+@dataclass(frozen=True)
 class Stream:
     """How to play a track: a URL plus headers that must not leak into the URL."""
 

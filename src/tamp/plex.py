@@ -5,6 +5,7 @@ Every function here blocks on the network; the UI calls them through asyncio.to_
 
 from __future__ import annotations
 
+import os
 import platform
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -41,7 +42,9 @@ def headers(client_id: str, token: str = "") -> dict[str, str]:
 
 
 def configure_plexapi(client_id: str) -> None:
-    """plexapi sends its own BASE_HEADERS on every request; make them ours."""
+    """plexapi sends its own BASE_HEADERS on every request; make them ours. Auto-reload is off:
+    reading an attribute a listing didn't include would otherwise cost a request per item."""
+    os.environ["PLEXAPI_PLEXAPI_AUTORELOAD"] = "false"
     plexapi.BASE_HEADERS.update({k: v for k, v in headers(client_id).items() if k.startswith("X-Plex")})
     plexapi.X_PLEX_IDENTIFIER = client_id
 
@@ -176,11 +179,17 @@ def music_sections(server: PlexServer) -> list:
 LOCAL_PLAYER = "http://127.0.0.1:32500"  # Plexamp on this computer, when remote control is on
 
 
-def local_player(token: str):
-    """Plexamp (or another Plex player) on this machine that accepts remote control, or None."""
+def local_player(token: str, known: set[str]):
+    """Plexamp (or another Plex player) on this machine that accepts remote control, or None.
+    The token is only sent once the player there proves to be one of `known` (your account's
+    devices): any local process could be listening on that port."""
     from plexapi.client import PlexClient
 
     try:
+        r = requests.get(f"{LOCAL_PLAYER}/resources", headers={"Accept": "application/xml"}, timeout=2)
+        player = ElementTree.fromstring(r.content).find("Player")
+        if player is None or player.get("machineIdentifier") not in known:
+            return None
         return PlexClient(baseurl=LOCAL_PLAYER, token=token, timeout=2)
     except Exception:
         return None
@@ -190,11 +199,13 @@ def list_players(token: str, server: PlexServer) -> list[Device]:
     """Every player we could show or control: Plexamp here, players on the account, and
     whatever is playing on the server right now (your phone shows up while it plays)."""
     found: dict[str, Device] = {}
-    if (client := local_player(token)) is not None:
+    account_players = players(token)
+    known = {d.id for d, _ in account_players}
+    if (client := local_player(token, known)) is not None:
         found[client.machineIdentifier] = Device(
             id=client.machineIdentifier, name=f"{client.title} (this computer)", product=client.product or ""
         )
-    for device, _ in players(token):
+    for device, _ in account_players:
         found.setdefault(device.id, device)
     for item in server.sessions():
         if item.type != "track" or item.player is None:
@@ -218,11 +229,12 @@ def output_for(device_id: str, token: str, server: PlexServer, library):
     devices = {d.id: d for d in list_players(token, server)}
     device = devices.get(device_id, Device(id=device_id, name="player"))
     client = None
-    local = local_player(token)
+    account_players = players(token)
+    local = local_player(token, {d.id for d, _ in account_players})
     if local is not None and local.machineIdentifier == device_id:
         client = local
     if client is None:
-        resource = next((r for _, r in players(token) if r.clientIdentifier == device_id), None)
+        resource = next((r for _, r in account_players if r.clientIdentifier == device_id), None)
         if resource is not None:
             try:
                 client = resource.connect(timeout=3)

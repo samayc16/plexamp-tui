@@ -71,9 +71,12 @@ def signed_out(config: Config) -> Config:
 
 
 def write_state(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Private (0600): your queue and what you're playing are nobody else's business."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data))
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f)
     os.replace(tmp, path)
 
 

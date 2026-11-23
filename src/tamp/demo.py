@@ -11,7 +11,7 @@ from dataclasses import replace
 from PIL import Image, ImageDraw
 
 from tamp import lrc
-from tamp.models import Album, Artist, Playlist, SearchResults, Stream, Track
+from tamp.models import Album, Artist, ArtistOverview, Hub, Playlist, SearchResults, Stream, Track
 
 _CATALOGUE = {
     "Aurora Drift": [
@@ -112,6 +112,40 @@ class DemoLibrary:
     def _all_tracks(self) -> list[Track]:
         return [
             replace(t, rating=self._ratings.get(t.id, t.rating)) for ts in self._tracks.values() for t in ts
+        ]
+
+    def home(self) -> list[Hub]:
+        return [
+            Hub("Recently played", "track", tuple(self.recently_played()[:8])),
+            Hub("Recently added", "album", tuple(self.recently_added())),
+            Hub("Stations", "station", tuple(self.stations())),
+            Hub("Your playlists", "playlist", tuple(self.playlists())),
+            Hub("Artists", "artist", tuple(self._artists)),
+        ]
+
+    def artist_overview(self, artist: Artist) -> ArtistOverview:
+        tracks = self.artist_tracks(artist)
+        albums = self.albums(artist)
+        return ArtistOverview(
+            popular=tuple(sorted(tracks, key=lambda t: t.title)[:5]),
+            albums=tuple(a for a in albums if (a.track_count or 0) > 4),
+            singles=tuple(a for a in albums if (a.track_count or 0) <= 4),
+            similar=tuple(a for a in self._artists if a.id != artist.id),
+        )
+
+    def details(self, track: Track) -> list[tuple[str, str]]:
+        return [
+            ("Title", track.title),
+            ("Artist", track.artist),
+            ("Album", f"{track.album} ({track.year})"),
+            ("Track", str(track.index)),
+            (
+                "Format",
+                f"{(track.codec or '').upper()} · {track.bitrate_kbps} kbps · 44.1 kHz · 16-bit · 2 ch",
+            ),
+            ("Loudness", f"{track.gain_db:.1f} dB gain" if track.gain_db is not None else "not analysed"),
+            ("Plays", "3"),
+            ("Rating", "♥ liked" if self._ratings.get(track.id, track.rating) == 10 else ""),
         ]
 
     def artists(self) -> list[Artist]:
