@@ -127,7 +127,9 @@ async def test_mpv_plays_gapless_into_the_next_track(tmp_path) -> None:
         player.advanced()
         advanced.set()
 
-    mpv = Mpv(tmp_path / "mpv.sock", lambda msg: local.handle_event(msg))
+    mpv = Mpv(
+        tmp_path / "mpv.sock", lambda msg: local.handle_event(msg), ("--ao=null",)
+    )  # no sound card needed
     local = LocalOutput(player.library, mpv, player.changed, on_advance, player.finished)
     await player.use(local)
     await mpv.set("volume", 0)  # silent test
@@ -153,7 +155,9 @@ async def _local(tmp_path, library) -> tuple[Player, LocalOutput, asyncio.Queue]
         player.advanced()
         events.put_nowait(player.queue.current)
 
-    mpv = Mpv(tmp_path / "mpv.sock", lambda msg: local.handle_event(msg))
+    mpv = Mpv(
+        tmp_path / "mpv.sock", lambda msg: local.handle_event(msg), ("--ao=null",)
+    )  # no sound card needed
     local = LocalOutput(player.library, mpv, player.changed, on_advance, player.finished)
     await player.use(local)
     await mpv.set("volume", 0)

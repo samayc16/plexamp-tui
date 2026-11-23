@@ -261,3 +261,32 @@ ContextMenu {
 #np > * {
     background: $t-bg;
 }
+
+/* Textual's own widgets in the theme too (lists in pop-ups, inputs, the footer) */
+OptionList {
+    background: $t-panel;
+    color: $t-fg;
+}
+
+Input {
+    background: $t-bg;
+    color: $t-fg;
+}
+
+Footer {
+    background: $t-panel;
+}
+
+FooterKey {
+    background: $t-panel;
+    color: $t-dim;
+}
+
+FooterKey .footer-key--key {
+    background: $t-panel;
+    color: $t-highlight;
+}
+
+FooterKey .footer-key--description {
+    color: $t-fg;
+}

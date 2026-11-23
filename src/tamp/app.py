@@ -91,7 +91,7 @@ class TampApp(App):
         rows = [
             Text.assemble(
                 ("● " if name == self.cfg.theme else "○ ", fmt.GREEN),
-                (name, fmt.FG),
+                (name, ""),  # the list's own colour, so it stays readable while previewing
                 (f"  {about.get(name, 'yours' if name in self.user_themes else '')}", fmt.DIM),
             )
             for name in names

@@ -1,74 +1,98 @@
 # tamp
 
-**A Plexamp-style music player for the terminal.** Browse and search your Plex library, see synced lyrics, edit the queue and playlists. Play right in the terminal, or use tamp as the remote and lyrics screen for Plexamp running on your phone, your Mac or a headless box.
+**A Plexamp-style music player and remote for the terminal.** Browse your Plex library, follow synced lyrics, edit the queue, and play right in the terminal, or drive Plexamp on your phone, desktop or headless box from it.
+
+> [!NOTE]
+> **Work in progress: a proof of concept.** It's what I use every day, but it's young. Expect rough edges, and please open an issue when something breaks.
 
 > [!WARNING]
-> **This is vibe-coded.** It was written largely by an AI assistant (Claude) as a proof of concept, with a human steering, testing and reviewing it. It works for its author, but it hasn't had the scrutiny a hand-written project gets. Expect rough edges, read the code before trusting it with anything important, and file issues freely. tamp is not affiliated with or endorsed by Plex.
+> **AI-assisted.** Most of the code was written by an AI assistant (Claude), with me steering, testing on my own setup and reviewing every change. It has an automated test suite and has been through security-minded reviews (see [How it works](#how-it-works)), but it hasn't had the scrutiny a hand-written project gets. The code is small and readable; please read it before trusting it. tamp is not affiliated with or endorsed by Plex.
 
-![tamp playing an album, with synced lyrics beside the album art](docs/main.png)
+![tamp controlling Plexamp on an iPhone: Tame Impala's Currents, synced lyrics, colours taken from the album art](docs/hero.png)
+
+## Why
+
+I spend my working day in a terminal and like to stay in flow there. I usually listen with AirPods connected to my iPhone, with Plexamp doing the playing. tamp lets me run that phone from the terminal I'm already in. I get a good-looking controller with synced lyrics, the real queue and all the usual comforts of a music player, without picking up the phone. When I'm at my desk without the phone, it plays right in the terminal instead.
 
 ## Features
 
-**Library**
-- A home page built from your server's hubs (recently played, recently added, stations, playlists), like Plexamp's.
-- Artists, albums, playlists, stations and liked tracks.
-- Artist pages with popular tracks, albums, singles & EPs and sonically similar artists.
-- Search as you type (`/`).
+**Remote control** (`o`, "Play on")
+- Control Plexamp on your phone, desktop or headless box: play, pause, skip, seek, volume, and queue anything.
+- It shows that device's *real* queue, the one you started on the phone, and keeps the lyrics in time.
+- When a player can't be reached (your phone left the Wi-Fi), tamp still follows along: now playing, art and lyrics.
 
-**Playing**
+**Plays here too**
 - Gapless playback through [mpv](https://mpv.io), with loudness leveling from Plex's own sonic analysis.
-- Synced lyrics beside the music, full size (`L`), or in a full-screen player with big art (`F`). Click a line to jump to that part of the song.
-- Radio from anything (`r`): sonically similar tracks, artist radio, album radio, plus your server's stations.
 - Plays are reported to Plex, so history, play counts and "recently played" stay right everywhere.
 
-**Queue and playlists**
-- Play next, add to queue, shuffle, repeat, reorder, remove; the queue survives restarts.
-- Save the queue as a playlist, or add anything to a playlist.
-- Like tracks.
+**Lyrics**
+- Synced lyrics beside the music, full size (`L`), or in a full-screen player with big art (`F`).
+- The line being sung is highlighted. Click any line to jump there.
+
+**Library**
+- Home from your server's hubs: your mixes, recently played, recently added, stations and playlists.
+- Artists (popular tracks, albums, singles, similar artists), albums, playlists, stations and liked tracks.
+- Search as you type (`/`).
+- Radio from anything (`r`).
+
+**Queue, like Plexamp's**
+- *Play next*, *Add to Up Next* and *Play last*; the queue shows Played, Now playing, Up next and the rest.
+- Reorder by dragging, or with `J`/`K` (shift+↑↓). `N` and `a` move a track to the front or end of Up Next.
+- Shuffle, repeat, remove, and save the queue as a playlist. It survives restarts.
+
+**Themes** (`T`)
+- *auto*: colours taken from the playing album's art, and your terminal's own colours when nothing plays.
+- Built in: Monokai Pro, Catppuccin (Mocha, Latte), Dracula, Solarized (dark, light), Gruvbox, Nord, Tokyo Night, Rosé Pine, and *terminal*. It previews live as you move through the list.
+- [Make your own](#themes) in a few lines of TOML.
 
 **Comfortable**
-- Right-click (or `m`) on any row for everything you can do with it.
-- Mouse support: click to select, double-click to play, click the progress bar to seek.
-- A searchable help screen (`?`), track info with format and loudness (`i`), and a sleep timer (`z`).
-- Vim keys throughout, and a sign-in flow that never asks you to paste a token.
+- Right-click (or `m`) any row for everything you can do with it.
+- Mouse throughout: click, double-click to play, drag the progress bar to seek, drag rows in the queue.
+- Vim keys, a searchable help screen (`?`), track info (`i`), a sleep timer (`z`) and liking (`f`).
+- Sign in with a link (`o` opens it, `c` copies it), a QR code, or a code at plex.tv/link. Plex Home users with PINs work.
+- `tamp status` for your tmux bar.
 
-**Remote control** (`o`, "Play on")
-- Control Plexamp on another device, or just follow along with what it's playing.
-- See [Remote control](#remote-control) for what works where.
+## Screenshots
 
-**Shell**
-- `tamp status` for your tmux bar, and `tamp toggle`, `next` and `prev` for key bindings.
+Everything here is my real library, playing on my iPhone or through mpv on my Mac.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/menu.png" alt="The context menu on a track"><br>Right-click or <code>m</code>: every action for that row</td>
-    <td width="50%"><img src="docs/player.png" alt="The full-screen player with big album art and synced lyrics"><br><code>F</code>: full-screen player, big art and synced lyrics</td>
+    <td width="50%"><img src="docs/remote-queue.png" alt="The queue of Plexamp on an iPhone, with the menu for a track: move to play next, move up or down, remove"><br>The phone's real queue, and every action for a row (right-click or <code>m</code>). Colours from <i>Upside Down</i>'s art.</td>
+    <td width="50%"><img src="docs/player.png" alt="The full-screen player: Weezer's blue album, synced lyrics with the sung line highlighted"><br><code>F</code>: full-screen player, following my iPhone</td>
   </tr>
   <tr>
-    <td><img src="docs/devices.png" alt="The Play on picker listing this computer, an iPhone, a MacBook and a headless Plexamp"><br><code>o</code>: play here, or control Plexamp elsewhere</td>
-    <td><img src="docs/artist.png" alt="An artist page with popular tracks, albums, singles and similar artists"><br>Artist pages: popular, albums, singles & EPs, similar</td>
+    <td><img src="docs/play-on.png" alt="The Play on picker listing this computer, an iPhone, a SHIELD TV and two Plexamps, over search results"><br><code>o</code>: play here or on any of your players; search as you type behind it</td>
+    <td><img src="docs/local.png" alt="Arctic Monkeys' Favourite Worst Nightmare playing on this computer with synced lyrics"><br>Playing here through mpv</td>
   </tr>
   <tr>
-    <td><img src="docs/home.png" alt="The home page: recently played, recently added, stations, playlists"><br>Home, from your library's hubs</td>
-    <td><img src="docs/help.png" alt="The help screen with a filter"><br><code>?</code>: every key, searchable</td>
+    <td><img src="docs/up-next.png" alt="The queue with Paramore playing and SZA and Kid Cudi in Up Next"><br>Up Next, like Plexamp's</td>
+    <td><img src="docs/themes.png" alt="The theme picker previewing Catppuccin Latte over SZA's artist page"><br><code>T</code>: themes, previewed live</td>
+  </tr>
+  <tr>
+    <td><img src="docs/artist.png" alt="SZA's artist page: popular tracks and albums, coloured from SOS's art"><br>Artist pages</td>
+    <td><img src="docs/home.png" alt="The home page: mixes for you, recently played and recently added"><br>Home, from your server's hubs</td>
+  </tr>
+  <tr>
+    <td><img src="docs/signin.png" alt="The sign-in screen with a link, a QR code and a plex.tv/link code"><br>Sign in with a link, a QR code or a code</td>
+    <td><img src="docs/help.png" alt="The searchable help screen"><br><code>?</code>: every key and mouse action, searchable</td>
   </tr>
 </table>
 
-Screenshots use `tamp --demo`, an invented offline library.
-
 ## Install
 
-You need Python 3.11+, [uv](https://docs.astral.sh/uv/) and mpv:
+tamp runs on macOS and Linux. You need Python 3.11+, [uv](https://docs.astral.sh/uv/) and mpv:
 - macOS: `brew install mpv`
-- Debian / Ubuntu: `apt install mpv`
-- Fedora: `dnf install mpv`
-- Arch: `pacman -S mpv`
+- Debian / Ubuntu: `sudo apt install mpv`
+- Fedora: `sudo dnf install mpv`
+- Arch: `sudo pacman -S mpv`
 
 ```sh
 uv tool install git+https://github.com/samayc16/tamp
-tamp            # sign in, then play
-tamp --demo     # no Plex needed
+tamp
 ```
+
+Update with `uv tool upgrade tamp`.
 
 **Signing in:** press `o` to open the Plex sign-in page or `c` to copy the link, scan the QR code with your phone, or enter the four-letter code at plex.tv/link. Then pick a Plex Home user (with their PIN if they have one), a server and a music library. `tamp logout` forgets it all.
 
@@ -78,15 +102,33 @@ Press `o` to choose where music plays. tamp finds players three ways: Plexamp on
 
 | player | control from tamp | needs |
 |---|---|---|
+| **Plexamp on an iPhone** | full while Plexamp is alive (it is while it's playing) | same Wi-Fi, and Plexamp allowed *Local Network* access in iOS Settings |
+| **Plexamp on Android** | full while the app is running | same network |
 | **Plexamp on a Mac / PC** | full | same network, and *Remote Control* turned on in Plexamp's settings |
 | **Plexamp headless / Caldera** | full | same network |
-| **Plexamp on Android** | full while the app is running | same network |
-| **Plexamp on an iPhone** | full while Plexamp is alive (it is while it's playing) | same Wi-Fi, and Plexamp allowed *Local Network* access in iOS Settings |
 | **any of these, away from home** | follow: now playing, art and synced lyrics | nothing |
 
-**Follow mode:** when a player can't be reached, tamp still shows what it's playing. Every Plex player reports its playback to your server, so tamp reads that session and keeps synced lyrics in time. This covers your phone on cellular, or Plexamp asleep in the background.
+**Follow mode:** when a player can't be reached, tamp still shows what it's playing. Every Plex player reports its playback to your server, so tamp reads that and keeps the lyrics in time. This covers your phone on cellular, or Plexamp asleep in the background.
 
 **Away from home:** Plexamp's own remote control works through a private Plex cloud relay that other apps can't use, so tamp only follows there.
+
+## Themes
+
+Press `T` to pick one; it's remembered. To make your own, add `~/.config/tamp/themes/<name>.toml`. Start from a built-in, then change any of its colours:
+
+```toml
+extends = "nord"
+accent = "#ff79c6"     # artists, titles, borders
+highlight = "#f1fa8c"  # the sung lyric line, key hints
+```
+
+The colours you can set: `bg`, `panel`, `overlay`, `line`, `select`, `hover`, `fg`, `dim`, `accent`, `playing`, `highlight`, `album`, `extra` and `warm`. Each takes `#rrggbb` or a terminal colour name like `bright_blue`.
+
+## Configuration
+
+`~/.config/tamp/config.json` holds your sign-in and choices, and only you can read it. Besides the theme, two settings are worth knowing:
+- `"mpv_args": ["--audio-device=coreaudio/AppleUSBAudioEngine:…"]`: extra mpv options for local playback, such as which audio device to use (`mpv --audio-device=help` lists them).
+- `"loudness_leveling": false`: turn leveling off (or press `v`).
 
 ## Use it from tmux
 
@@ -96,32 +138,48 @@ bind-key M-p run-shell 'tamp toggle'
 bind-key M-n run-shell 'tamp next'
 ```
 
+`tamp toggle`, `next`, `prev` and `stop` work from anywhere, which makes them handy for key bindings.
+
+## Roadmap
+
+Ideas, roughly in order. Issues and PRs are very welcome.
+- **Real album art** where the terminal can show images (the Kitty graphics protocol, iTerm2, Sixel). The pixel-art look stays as an option, because it's charming.
+- **A Rust rewrite** (ratatui and mpv), now that the features have settled. This Python version is the proof of concept.
+- **More of Plexamp:** crossfade and sweet fades, DJ modes, a guest/party queue, an equalizer.
+- **Packaging:** Homebrew and the AUR.
+- **Control from anywhere:** remote control away from home, if a sanctioned way appears.
+
 ## How it works
 
 | module | job |
 |---|---|
 | `plex.py` | plex.tv sign-in (two PINs: browser link and plex.tv/link code), Home users, servers, player discovery |
-| `library.py` | browsing, hubs, search, radio, lyrics, art, ratings and play reports, via [python-plexapi](https://github.com/pushingkarmaorg/python-plexapi); `demo.py` is an offline stand-in |
-| `mpv.py`, `output.py` | local playback through one mpv over JSON IPC, whose playlist holds the current track and the next (gapless); remote players through `companion.py`, with the server's sessions as fallback |
+| `library.py` | browsing, hubs, search, radio, lyrics, art, ratings and play reports, via [python-plexapi](https://github.com/pushingkarmaorg/python-plexapi) |
+| `mpv.py`, `output.py` | local playback through one mpv over JSON IPC, whose playlist holds the current and next track (gapless); remote players through `companion.py`, with your server as the fallback |
 | `player.py`, `queue.py` | the queue as an immutable value, transport, play reporting, the status file for tmux |
-| `ui/` | the [Textual](https://textual.textualize.io) app: browser, context menus, now playing, full-screen player, help |
+| `ui/` | the [Textual](https://textual.textualize.io) app: browser, menus, now playing, full-screen player, themes, help |
 
 **Your Plex token:**
 - It's stored in `~/.config/tamp/config.json`, readable only by you.
 - It's sent as a header, never in a URL or on a command line.
 - It only goes to players at addresses plex.tv lists for your own devices, or to a player that first identified itself without it.
+- Reading another player's queue never takes it over from that player.
 
 **Testing:**
-- Unit tests cover the queue, lyrics, playback (with a real mpv, including the gapless hand-offs) and the remote-control protocol (against a stub player).
-- Real-world testing against many Plex setups is still thin, so reports are welcome.
+- Unit and UI tests cover the queue and Up Next, lyrics, themes, the search and drag behaviour, playback (with a real mpv, including the gapless hand-offs) and the remote-control protocol (against a stub player).
+- They run on Ubuntu and macOS for every push.
+- Day to day it's used on macOS with a Plex server and Plexamp on an iPhone. Linux should work the same (it's Python and mpv), and reports are welcome.
 
-This Python version is the proof of concept. The plan is a Rust rewrite (ratatui + mpv) once the features have settled.
+## Contributing
+
+Issues, ideas and pull requests are all welcome. Please be kind: this started as a tool for my own setup, and I'm sharing it in case it helps yours.
 
 ## Development
 
 ```sh
 uv venv && uv pip install -e '.[test]'
 .venv/bin/pytest
+.venv/bin/tamp --demo   # an invented offline library, for working on the UI without a server
 ```
 
 MIT licensed.

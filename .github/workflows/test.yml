@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: mpv
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update -q && sudo apt-get install -yq mpv; else brew install mpv; fi
+      - uses: astral-sh/setup-uv@v6
+      - name: tests
+        run: |
+          uv venv --python 3.12
+          uv pip install -e '.[test]'
+          .venv/bin/pytest -q
+      - name: lint
+        run: uvx ruff check src tests && uvx ruff format --check src tests
