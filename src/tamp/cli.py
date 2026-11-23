@@ -16,6 +16,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--version", action="version", version=f"tamp {__version__}")
     parser.add_argument("--demo", action="store_true", help="an offline demo library (no Plex needed)")
+    parser.add_argument(
+        "--private", action="store_true", help="report nothing to Plex: no history, no play counts"
+    )
+    parser.add_argument(
+        "--hide-names", action="store_true", help="keep account, server and device names off screen"
+    )
     sub = parser.add_subparsers(dest="command")
     status = sub.add_parser("status", help="what's playing, one line (for tmux)")
     status.add_argument("--json", action="store_true", help="everything as JSON")
@@ -55,6 +61,6 @@ def main(argv: list[str] | None = None) -> int:
 
     from tamp.app import TampApp
 
-    app = TampApp(demo=args.demo)
+    app = TampApp(demo=args.demo, private=args.private, hide_names=args.hide_names)
     app.run()
     return app.return_code or 0

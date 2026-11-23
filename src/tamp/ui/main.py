@@ -152,7 +152,12 @@ class MainScreen(Screen):
         yield Static("", id="topbar")
         with Horizontal(id="body"):
             yield OptionList(
-                *[Option(Text(label), id=key) for key, label in pages.SECTIONS], markup=False, id="nav"
+                *[
+                    Option(Text.assemble((f"{n} ", fmt.DIM), (label, fmt.FG)), id=key)
+                    for n, (key, label) in enumerate(pages.SECTIONS, start=1)
+                ],
+                markup=False,
+                id="nav",
             )
             with Vertical(id="center"):
                 with Horizontal(id="page-header"):
@@ -175,10 +180,18 @@ class MainScreen(Screen):
 
     def update_topbar(self) -> None:
         app = self.tamp
-        who = f"{app.cfg.user_title} @ " if getattr(app.cfg, "user_title", "") else ""
+        who = f"{app.cfg.user_title} @ " if app.cfg.user_title and not app.demo and not app.hide_names else ""
         library = app.library.name if app.library else ""
+        if app.hide_names:
+            library = library.split(" · ")[0]  # the section's name, not the server's
+        private = "  · private session" if app.private else ""
         self.query_one("#topbar", Static).update(
-            Text.assemble((" tamp ", f"bold {fmt.PINK}"), ("  ", ""), (f"{who}{library}", fmt.DIM))
+            Text.assemble(
+                (" tamp ", f"bold {fmt.PINK}"),
+                ("  ", ""),
+                (f"{who}{library}", fmt.DIM),
+                (private, fmt.ORANGE),
+            )
         )
 
     def on_resize(self) -> None:
@@ -196,8 +209,9 @@ class MainScreen(Screen):
         if page is None:
             return
         browser = self.query_one("#browser", Browser)
-        width = max(30, browser.size.width - 4)
+        width = self.row_width(browser)
         now = self.tamp.now_track
+        cols = self.track_columns(page, width)
         rows: list[Option | None] = []
         for i, e in enumerate(page.entries):
             if e.kind == "heading":
@@ -205,7 +219,7 @@ class MainScreen(Screen):
                     rows.append(None)
                 rows.append(Option(fmt.heading(e.label), disabled=True))
             else:
-                rows.append(Option(self._row(i, e, width, page, now), id=str(i)))
+                rows.append(Option(self._row(i, e, width, page, now, cols), id=str(i)))
         browser.clear_options()
         browser.add_options(rows)
         if browser.option_count:
@@ -214,16 +228,31 @@ class MainScreen(Screen):
         self.query_one("#crumb", Static).update(Text(f" {crumb}", style=f"bold {fmt.PINK}"))
         self._show_header(page)
 
-    def _row(self, i: int, e: Entry, width: int, page: Page, now: Track | None) -> Text:
+    @staticmethod
+    def row_width(browser: Browser) -> int:
+        """Cells a row may use: the list's width minus its padding and scrollbar, so long pages
+        (which grow a scrollbar) never wrap."""
+        return max(30, browser.scrollable_content_region.width - 2)
+
+    @staticmethod
+    def track_columns(page: Page, width: int) -> fmt.Columns:
+        tracks = [e.value for e in page.entries if e.kind == "track"]
+        if page.kind == "queue":
+            numbers = list(range(1, len(tracks) + 1))
+        elif page.kind == "album":
+            numbers = [t.index or 0 for t in tracks]  # type: ignore[union-attr]
+        else:
+            numbers = []
+        return fmt.columns(tracks, width, show_album=page.kind != "album", numbers=numbers)  # type: ignore[arg-type]
+
+    def _row(self, i: int, e: Entry, width: int, page: Page, now: Track | None, cols: fmt.Columns) -> Text:
         if e.kind == "track":
             t: Track = e.value  # type: ignore[assignment]
             if page.kind == "queue":
-                return fmt.track_row(t, width, playing=i == self.tamp.player.queue.current, number=i + 1)
+                return fmt.track_row(t, cols, playing=i == self.tamp.player.queue.current, number=i + 1)
             album = page.kind == "album"
             playing = now is not None and now.id == t.id
-            return fmt.track_row(
-                t, width, playing=playing, show_album=not album, number=t.index if album else None
-            )
+            return fmt.track_row(t, cols, playing=playing, number=t.index if album else None)
         if e.kind == "artist":
             return fmt.artist_row(e.value, width)  # type: ignore[arg-type]
         if e.kind == "album":

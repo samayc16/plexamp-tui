@@ -25,7 +25,9 @@ class Player:
         library: Library,
         on_update: Callable[[Playback, Queue], None],
         on_error: Callable[[str], None] = lambda _m: None,
+        report: bool = True,
     ) -> None:
+        self.report = report  # False: a private session, nothing goes to Plex's history
         self.library = library
         self.on_update = on_update
         self.on_error = on_error
@@ -106,7 +108,7 @@ class Player:
     # ── reporting ──
     def _maybe_report(self, state: Playback) -> None:
         track = state.track
-        if track is None or self.remote:  # a remote player reports for itself
+        if track is None or self.remote or not self.report:  # a remote player reports for itself
             return
         if state.duration_ms and state.position_ms >= SCROBBLE_AT * state.duration_ms:
             self._scrobble(track)
@@ -117,7 +119,7 @@ class Player:
             self._tasks.spawn(self._background(self.library.report, track, status, state.position_ms))
 
     def _scrobble(self, track: Track) -> None:
-        if self._scrobbled == track.id or self.remote:
+        if self._scrobbled == track.id or self.remote or not self.report:
             return
         self._scrobbled = track.id
         self._tasks.spawn(self._background(self.library.scrobble, track))

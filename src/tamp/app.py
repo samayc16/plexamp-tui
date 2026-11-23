@@ -34,9 +34,11 @@ class TampApp(App):
     TITLE = "tamp"
     ENABLE_COMMAND_PALETTE = False
 
-    def __init__(self, demo: bool = False) -> None:
+    def __init__(self, demo: bool = False, private: bool = False, hide_names: bool = False) -> None:
         super().__init__()
         self.demo = demo
+        self.private = private  # report nothing to Plex this session
+        self.hide_names = hide_names  # account, server and device names stay off screen
         self.cfg = config.load()
         self.library: Library | None = None
         self.player: Player | None = None
@@ -69,7 +71,10 @@ class TampApp(App):
             self.exit(1, message=f"tamp: {e}")
             return
         self.player = Player(
-            self.library, self.on_player_update, on_error=lambda m: self.notify(m, severity="warning")
+            self.library,
+            self.on_player_update,
+            on_error=lambda m: self.notify(m, severity="warning"),
+            report=not self.private,
         )
         if not self.demo:
             self.player.restore_queue()
@@ -168,6 +173,9 @@ class TampApp(App):
             return
         if self.local and self.player and self.player.output is self.local:
             self.local.handle_event(msg)
+
+    def shown_name(self, device) -> str:
+        return (device.product or "player") if self.hide_names else device.name
 
     def _home_key(self) -> str:
         return "demo" if self.demo else f"{self.cfg.user_title}:{self.cfg.server_id}:{self.cfg.section_id}"
@@ -336,7 +344,7 @@ class TampApp(App):
                 for device in await asyncio.to_thread(
                     plex.list_players, self.cfg.client_id, self.cfg.user_token, self.server
                 ):
-                    options.append((device.id, device.name, device.product))
+                    options.append((device.id, self.shown_name(device), device.product))
             except Exception as e:
                 self.notify(f"couldn't list players: {e}", severity="warning")
         current = next((i for i, o in enumerate(options) if o[0] == self.cfg.device_id), 0)
@@ -377,7 +385,7 @@ class TampApp(App):
                 return
             output.on_change = self.player.changed
             await self.player.use(output, resume=resume and output.controllable)
-            self.device_name = output.device.name
+            self.device_name = self.shown_name(output.device)
             if not output.controllable and not quiet:
                 self.notify(
                     "following this player: now playing and lyrics (it isn't reachable for remote control from here)",

@@ -236,3 +236,23 @@ def test_remote_position_ignores_time_spent_paused() -> None:
     # resumed 2 s later; the server still reports the paused offset
     assert out._state_from(item, playing, now=102.0).position_ms == 60_000
     assert out._state_from(item, playing, now=103.5).position_ms == 61_500
+
+
+async def test_a_private_session_reports_nothing() -> None:
+    calls: list[str] = []
+
+    class Spy(DemoLibrary):
+        def report(self, track, state, position_ms):
+            calls.append("report")
+
+        def scrobble(self, track):
+            calls.append("scrobble")
+
+    player = Player(Spy(), lambda s, q: None, report=False)
+    await player.use(FakeOutput())
+    await player.play(tracks(1))
+    t = player.queue.track
+    player.changed(Playback(track=t, position_ms=9_500, duration_ms=10_000, paused=False))
+    player.finished(t)
+    await asyncio.sleep(0.05)
+    assert calls == []

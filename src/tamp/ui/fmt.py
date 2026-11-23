@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from rich.text import Text
 
 from tamp.models import Album, Artist, Playlist, Track
@@ -24,31 +26,63 @@ def fit(text: str, width: int) -> str:
     return text.ljust(width) if len(text) <= width else text[: width - 1] + "…"
 
 
-def track_row(
-    t: Track, width: int, playing: bool = False, show_album: bool = True, number: int | None = None
-) -> Text:
-    marker = Text("▶ " if playing else "  ", style=GREEN)
-    num = f"{number if number is not None else '':>3} "  # album pages pass the track number
-    like = "♥" if t.liked else " "
-    dur = duration(t.duration_ms)
-    rest = max(10, width - len(num) - 2 - len(dur) - 4)
-    if show_album:
-        title_w = max(8, rest // 2)
-        artist_w = max(6, rest - title_w - 2)
-        meta = fit(f"{t.artist} · {t.album}", artist_w)
-    else:
-        title_w, artist_w = rest - 2, 0
-        meta = ""
-    text = Text.assemble(
-        marker,
+@dataclass(frozen=True)
+class Columns:
+    """Column widths for a page of tracks, so every row lines up."""
+
+    num: int
+    title: int
+    artist: int
+    album: int  # 0: no album column (album pages, or not enough room)
+
+
+GAP = 2
+MIN_TITLE, MIN_ARTIST, MIN_ALBUM = 16, 10, 10
+
+
+def columns(
+    tracks: list[Track], width: int, show_album: bool = True, numbers: list[int] | None = None
+) -> Columns:
+    """Widths from the page's own content: titles get room first, then artists, then albums;
+    the album column goes when there isn't room for it."""
+    num = max((len(str(n)) for n in numbers or [] if n), default=0)
+    num = num + 1 if num else 0
+    fixed = 2 + num + 3 + 7  # marker, number, " ♥ ", duration
+    avail = max(MIN_TITLE, width - fixed)
+    want_title = max((len(t.title) for t in tracks), default=MIN_TITLE)
+    want_artist = max((len(t.artist) for t in tracks), default=MIN_ARTIST)
+    want_album = max((len(t.album) for t in tracks), default=MIN_ALBUM) if show_album else 0
+    title = min(want_title, avail)
+    artist = min(want_artist, max(MIN_ARTIST, avail - title - GAP))
+    album = min(want_album, max(0, avail - title - artist - 2 * GAP)) if show_album else 0
+    # Not everything fits: share the room, titles first, and drop the album column below its minimum.
+    if title + GAP + artist + (GAP + album if album else 0) > avail:
+        artist = max(MIN_ARTIST, min(want_artist, (avail - GAP) * 3 // 10))
+        title = max(MIN_TITLE, avail - GAP - artist)
+        album = 0
+    if show_album and album == 0 and want_album:
+        spare = avail - title - artist - 2 * GAP
+        if spare >= MIN_ALBUM:
+            album = min(want_album, spare)
+    title = max(
+        MIN_TITLE, avail - artist - GAP - (album + GAP if album else 0)
+    )  # leftover space goes to titles
+    return Columns(num=num, title=title, artist=artist, album=album)
+
+
+def track_row(t: Track, cols: Columns, playing: bool = False, number: int | None = None) -> Text:
+    num = f"{number if number is not None else '':>{cols.num - 1}} " if cols.num else ""
+    parts = [
+        ("▶ " if playing else "  ", GREEN),
         (num, DIM),
-        (fit(t.title, title_w), f"bold {GREEN}" if playing else FG),
-        ("  " if meta else "", ""),
-        (meta, DIM),
-        (f" {like} ", PINK),
-        (dur, DIM),
-    )
-    return text
+        (fit(t.title, cols.title), f"bold {GREEN}" if playing else FG),
+        (" " * GAP, ""),
+        (fit(t.artist, cols.artist), PINK if playing else DIM),
+    ]
+    if cols.album:
+        parts += [(" " * GAP, ""), (fit(t.album, cols.album), DIM)]
+    parts += [(f" {'♥' if t.liked else ' '} ", PINK), (duration(t.duration_ms).rjust(7), DIM)]
+    return Text.assemble(*parts)
 
 
 def artist_row(a: Artist, width: int) -> Text:
