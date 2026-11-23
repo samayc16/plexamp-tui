@@ -194,3 +194,21 @@ def test_mpv_args_keep_only_options_and_never_the_socket() -> None:
 
     assert mpv_args(["--ao=null", "rm -rf", "--input-ipc-server=/tmp/x", 3]) == ("--ao=null",)
     assert mpv_args("--ao=null") == ()
+
+
+def test_track_rows_are_exactly_the_width_whatever_the_mix() -> None:
+    from tamp.ui import fmt
+
+    albums = ["Promo Only Modern Rock Radio Fall 2006", "Sing-A-Longs And Lullabies For The Film", "X"]
+    for title in ("Up", "Upside Down", "A Title That Goes On For Quite A While Indeed"):
+        for artist in ("Sia", "Jack Johnson", "Red Hot Chili Peppers & Friends"):
+            tracks = [
+                Track(id=str(i), title=title, artist=artist, album=a, duration_ms=1000)
+                for i, a in enumerate(albums)
+            ]
+            for width in range(44, 120, 7):  # below ~43 even the minimum columns cannot fit
+                for numbers in ([], [1, 2, 12]):
+                    cols = fmt.columns(tracks, width, show_album=True, numbers=numbers)
+                    for t in tracks:
+                        row = fmt.track_row(t, cols, number=12 if numbers else None)
+                        assert len(row.plain) == width, (title, artist, width, numbers, cols)

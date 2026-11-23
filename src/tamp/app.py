@@ -54,6 +54,7 @@ class TampApp(App):
         self._tasks = TaskSet(lambda m: self.notify(m, severity="warning"))
         self.user_themes, self._theme_problems = theme.load_user_themes(config.CONFIG_DIR / "themes")
         self._art_palettes: dict[str, theme.Palette] = {}  # album art (thumb) → its auto palette
+        self._previewing = False  # the theme picker is open: auto mustn't repaint over the preview
         theme.activate(self.resolve_theme(self.cfg.theme))
 
     # ── themes ──
@@ -97,11 +98,14 @@ class TampApp(App):
         ]
         before = theme.current()
         start = names.index(self.cfg.theme) if self.cfg.theme in names else 0
-        pick = await self.push_screen_wait(
-            Choose(
-                "Theme", rows, start, on_highlight=lambda i: self.apply_palette(self.resolve_theme(names[i]))
-            )
+        preview = Choose(
+            "Theme", rows, start, on_highlight=lambda i: self.apply_palette(self.resolve_theme(names[i]))
         )
+        self._previewing = True
+        try:
+            pick = await self.push_screen_wait(preview)
+        finally:
+            self._previewing = False
         if pick < 0:
             self.apply_palette(before)  # cancelled: back to how it was
             return
@@ -113,6 +117,12 @@ class TampApp(App):
     async def auto_theme(self, track: Track, image: bytes | None) -> None:
         """In auto, colour everything from the playing album's art."""
         if self.cfg.theme != theme.AUTO or not track.thumb or image is None:
+            return
+        if self._previewing:  # work out the palette, but leave the preview on screen
+            if track.thumb not in self._art_palettes and (
+                palette := await asyncio.to_thread(theme.from_art, image)
+            ):
+                self._art_palettes[track.thumb] = palette
             return
         if track.thumb not in self._art_palettes:
             palette = await asyncio.to_thread(theme.from_art, image)
@@ -274,7 +284,7 @@ class TampApp(App):
 
     def on_player_update(self, state: Playback, queue: Queue) -> None:
         self._dirty = True
-        if self.cfg.theme == theme.AUTO:  # stopped → terminal colours; playing again → the album's
+        if self.cfg.theme == theme.AUTO and not self._previewing:  # stopped → terminal; playing → album
             wanted = self.resolve_theme(theme.AUTO)
             if wanted is not theme.current() and (state.track is None or wanted.name != "terminal"):
                 self.apply_palette(wanted)

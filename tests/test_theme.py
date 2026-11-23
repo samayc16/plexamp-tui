@@ -65,3 +65,24 @@ def test_auto_palette_is_dark_tinted_and_its_accents_readable() -> None:
 
 def test_auto_palette_ignores_garbage() -> None:
     assert theme.from_art(b"not an image") is None
+
+
+async def test_previewing_a_theme_in_auto_is_not_repainted(tmp_path, monkeypatch) -> None:
+    from tamp.app import TampApp
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    app = TampApp(demo=True)
+    app.cfg = app.cfg.__class__(**{**app.cfg.__dict__, "theme": "auto"})
+    async with app.run_test(size=(120, 36)) as pilot:
+        await pilot.pause(0.3)
+        await pilot.press("T")
+        await pilot.pause(0.3)
+        await pilot.press("down", "down", "down")  # auto → monokai → mocha → latte
+        await pilot.pause(0.2)
+        app.on_player_update(app.player.state, app.player.queue)  # a tick from the player
+        await pilot.pause(0.2)
+        assert theme.current().name == "catppuccin-latte"
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+    theme.activate(theme.BUILT_IN[theme.DEFAULT])

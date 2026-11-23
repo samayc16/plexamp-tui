@@ -78,10 +78,15 @@ def columns(
         spare = avail - title - artist - 2 * GAP
         if spare >= MIN_ALBUM:
             album = min(want_album, spare)
-    title = max(
-        MIN_TITLE, avail - artist - GAP - (album + GAP if album else 0)
-    )  # leftover space goes to titles
-    return Columns(num=num, title=title, artist=artist, album=album)
+    title = avail - artist - GAP - (album + GAP if album else 0)  # leftover space goes to titles
+    if title < MIN_TITLE and album:  # short titles: take their minimum back from the album column
+        album -= MIN_TITLE - title
+        album = album if album >= MIN_ALBUM else 0
+        title = avail - artist - GAP - (album + GAP if album else 0)
+    if title < MIN_TITLE:  # still short: the artist column gives way too, down to its minimum
+        artist = max(MIN_ARTIST, artist - (MIN_TITLE - title))
+        title = avail - artist - GAP - (album + GAP if album else 0)
+    return Columns(num=num, title=max(MIN_TITLE, title), artist=artist, album=album)
 
 
 def track_row(t: Track, cols: Columns, playing: bool = False, number: int | None = None) -> Text:
