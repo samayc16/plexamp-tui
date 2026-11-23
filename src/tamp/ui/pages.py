@@ -141,9 +141,21 @@ def search(query: str, r: SearchResults) -> Page:
 
 
 def queue(q: Queue) -> Page:
+    """Played · Now playing · Up next (what you added) · Next from <source>. Each track row
+    carries its queue position in `label`."""
     page = Page(title="Queue", kind="queue", source=q.source)
-    page.entries = [Entry("track", t) for t in q.tracks]
-    page.highlighted = max(0, q.current)
     if not q.tracks:
         page.entries = [Entry("heading", label="the queue is empty: press a on anything to add it")]
+        return page
+
+    def section(label: str, start: int, items: tuple) -> None:
+        if items:
+            page.entries.append(Entry("heading", label=label))
+            page.entries += [Entry("track", t, str(start + n)) for n, t in enumerate(items)]
+
+    section("Played", 0, q.history)
+    section("Now playing", q.current, (q.track,) if q.track else ())
+    page.highlighted = len(page.entries) - 1
+    section("Up next", q.current + 1, q.up_next)
+    section(f"Next from {q.source}" if q.source else "Next", q.current + 1 + q.queued, q.rest)
     return page

@@ -22,6 +22,14 @@ from tamp.ui.fmt import CYAN, DIM, FG, GREEN, ORANGE, PINK, PURPLE, YELLOW, dura
 
 BAR_FULL, BAR_EMPTY, KNOB = "━", "─", "●"
 LYRIC_LEAD_MS = 250  # land just before the line so you hear it start
+LYRIC_META = "tamp_lyric_ms"  # a private tag, not Textual's @click: that would style lines as links
+
+
+def lyric_seek(event: events.Click) -> int | None:
+    """Where a click on a lyric line should seek to, if it landed on one."""
+    meta = event.style.meta if event.style else {}
+    value = meta.get(LYRIC_META)
+    return int(value) if value is not None else None
 
 
 class Seek(Message):
@@ -101,16 +109,17 @@ def lyrics_text(lyrics: Lyrics, position_ms: int, height: int, width: int, big: 
     text = Text()
     for i, line in enumerate(lyrics.lines[start : start + height], start=start):
         words = line.text or "♪"
-        if lyrics.timed and i == current:
-            colour, bold = YELLOW, True
-        elif lyrics.timed and i < current:
-            colour, bold = DIM, False
+        sung = lyrics.timed and i == current
+        if sung:
+            style = Style(color=YELLOW, bold=True, underline=False)
+            words = fit(words, width).rstrip()
         else:
-            colour, bold = FG, False
-        meta = {}
-        if lyrics.timed and line.time_ms is not None:  # click a line to jump there
-            meta = {"@click": f"app.seek_to({max(0, line.time_ms - LYRIC_LEAD_MS)})"}
-        text.append(fit(words, width).rstrip(), style=Style(color=colour, bold=bold, meta=meta))
+            colour = DIM if lyrics.timed and i < current else FG
+            style = Style(color=colour, underline=False)
+            words = fit(words, width).rstrip()
+        if lyrics.timed and line.time_ms is not None:  # click a line to jump there (see lyric_seek)
+            style += Style(meta={LYRIC_META: max(0, line.time_ms - LYRIC_LEAD_MS)})
+        text.append(words, style=style)
         text.append("\n" + ("\n" if big else ""))
     return text
 
@@ -188,14 +197,14 @@ class NowPlaying(Vertical):
     def _below(self, width: int) -> Text:
         height = max(3, self.size.height - 22)
         if self.lyrics and self.lyrics.lines:
-            return Text("lyrics\n", style=f"bold {DIM}") + lyrics_text(
+            return Text.assemble(("lyrics\n", f"bold {DIM}")) + lyrics_text(
                 self.lyrics, self.state.position_ms, height, width
             )
         upcoming = self.queue.upcoming[:height]
         if not upcoming:
             return Text(self.queue.source, style=DIM)
-        text = Text(
-            f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", style=f"bold {DIM}"
+        text = Text.assemble(
+            (f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", f"bold {DIM}")
         )
         for t in upcoming:
             text.append(fit(f"{t.title} · {t.artist}", width) + "\n", style=FG)
@@ -278,7 +287,7 @@ class PlayerScreen(Screen):
             )
         else:
             upcoming = queue.upcoming[: max(3, pane.size.height - 2)]
-            text = Text("up next\n\n", style=f"bold {DIM}")
+            text = Text.assemble(("up next\n\n", f"bold {DIM}"))
             for t in upcoming:
                 text.append(f"{t.title}", style=FG)
                 text.append(f"  {t.artist}\n", style=DIM)

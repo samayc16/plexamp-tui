@@ -63,6 +63,15 @@ class Browser(OptionList):
     """An OptionList where a single click only selects; double-click activates; right-click asks
     for the context menu."""
 
+    draggable = False  # the queue: drag a row to move it
+
+    class Reorder(Message):
+        """A row was dragged from option `source` and dropped on option `target`."""
+
+        def __init__(self, source: int, target: int) -> None:
+            super().__init__()
+            self.source, self.target = source, target
+
     class MenuRequested(Message):
         def __init__(self, index: int, x: int, y: int) -> None:
             super().__init__()
@@ -86,7 +95,35 @@ class Browser(OptionList):
         if event.chain >= 2:
             self.action_select()
 
+    _press: int | None = None
+    _dragging = False
+
+    def _on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._press is None:
+            return  # the release always arrives: a dragging widget holds the mouse
+        index = event.style.meta.get("option")
+        if index is not None and index != self._press:
+            if not self._dragging:
+                self._dragging = True
+                self.capture_mouse()
+            self.highlighted = index  # where it would land
+
+    def _on_mouse_up(self, event: events.MouseUp) -> None:
+        if self._press is None:
+            return
+        if self._dragging and self.highlighted is not None and self.highlighted != self._press:
+            event.stop()
+            self.post_message(self.Reorder(self._press, self.highlighted))
+        self._end_drag()
+
+    def _end_drag(self) -> None:
+        if self._dragging:
+            self.release_mouse()
+        self._press, self._dragging = None, False
+
     def _on_mouse_down(self, event: events.MouseDown) -> None:
+        if event.button == 1 and self.draggable and (index := self._option_at(event)) is not None:
+            self._press = index
         if event.button == 3 and (index := self._option_at(event)) is not None:
             event.stop()
             event.prevent_default()

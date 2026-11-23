@@ -85,10 +85,11 @@ HELP: list[tuple[str, list[tuple[str, str]]]] = [
     (
         "Queue and playlists",
         [
-            ("a · N", "add to queue · play next"),
+            ("a · N", "add to Up Next · play next (Play last is in the m menu)"),
             ("s · S", "shuffle-play this · shuffle what's up next"),
             ("r", "radio: similar tracks, artist radio, album radio"),
             ("d · J K · C", "(queue) remove · move down / up · clear upcoming"),
+            ("drag a queue row", "move it; drop inside Up Next to keep it there"),
             ("w · P", "save the queue as a playlist · add to a playlist"),
             ("f · *", "like the highlighted track · like what's playing"),
         ],

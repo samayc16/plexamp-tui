@@ -140,6 +140,9 @@ class Player:
     async def play_next(self, tracks: list[Track]) -> None:
         await self._mutate(self.queue.play_next(tracks))
 
+    async def add_up_next(self, tracks: list[Track]) -> None:
+        await self._mutate(self.queue.add_up_next(tracks))
+
     async def append(self, tracks: list[Track]) -> None:
         await self._mutate(self.queue.append(tracks))
 
@@ -253,6 +256,7 @@ class Player:
         data = {
             "current": self.queue.current,
             "repeat": self.queue.repeat,
+            "queued": self.queue.queued,
             "source": self.queue.source,
             "tracks": [asdict(t) for t in self.queue.tracks[:500]],
         }
@@ -271,6 +275,7 @@ class Player:
                 tracks=tracks,
                 current=min(int(data.get("current", 0)), len(tracks) - 1),
                 repeat=repeat if repeat in REPEAT_MODES else "off",
+                queued=max(0, int(data.get("queued", 0))),
                 source=data.get("source", ""),
             )
 

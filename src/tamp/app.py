@@ -23,7 +23,7 @@ from tamp.queue import Queue
 from tamp.ui import fmt
 from tamp.ui.main import MainScreen, guarded
 from tamp.ui.menus import Choose
-from tamp.ui.nowplaying import NowPlaying, PlayerScreen, Seek
+from tamp.ui.nowplaying import NowPlaying, PlayerScreen, Seek, lyric_seek
 from tamp.ui.signin import LoadingScreen, PickScreen, PinScreen, SignInScreen, server_rows, user_rows
 
 CLI_COMMANDS = {"toggle", "next", "prev", "stop"}
@@ -291,6 +291,11 @@ class TampApp(App):
         """A lyric line was clicked."""
         if self.player and self.player.state.track:
             await self.player.seek(int(position_ms))
+
+    def on_click(self, event) -> None:
+        """Clicks bubble up here: a click on a timed lyric line seeks to it."""
+        if (position := lyric_seek(event)) is not None:
+            self.run_worker(self.action_seek_to(position), group="seek", exclusive=True)
 
     def on_seek(self, message: Seek) -> None:
         """The progress bar was clicked or dragged (side panel or full-screen player)."""

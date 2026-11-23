@@ -102,7 +102,7 @@ def album_row(a: Album, width: int, show_artist: bool = True) -> Text:
 
 def playlist_row(p: Playlist, width: int) -> Text:
     icon, colour = ("  ✦ ", ORANGE) if p.radio else (("  ⚙ ", YELLOW) if p.smart else ("  ≡ ", YELLOW))
-    count = "" if p.radio else f"{p.count} tracks"
+    count = f"{p.count} tracks" if p.count and not p.radio else ("mix" if p.radio else "")
     return Text.assemble((icon, colour), (fit(p.title, max(10, width - 6 - len(count))), FG), (count, DIM))
 
 

@@ -43,14 +43,15 @@ def menu_items(entry: Entry, page_kind: str, liked: bool) -> list[MenuItem]:
         if page_kind == "queue":
             items: list[MenuItem] = [
                 ("play", "Play now", "enter"),
-                ("move_next", "Play next", ""),
+                ("move_next", "Move to play next", ""),
                 ("remove", "Remove from queue", "d"),
             ]
         else:
             items = [
                 ("play", "Play from here", "enter"),
                 ("play_next", "Play next", "N"),
-                ("add", "Add to queue", "a"),
+                ("add", "Add to Up Next", "a"),
+                ("play_last", "Play last", ""),
             ]
         return items + [
             ("radio", "Start radio (similar tracks)", "r"),
@@ -66,7 +67,8 @@ def menu_items(entry: Entry, page_kind: str, liked: bool) -> list[MenuItem]:
             ("play", "Play", ""),
             ("shuffle", "Shuffle", "s"),
             ("play_next", "Play next", "N"),
-            ("add", "Add to queue", "a"),
+            ("add", "Add to Up Next", "a"),
+            ("play_last", "Play last", ""),
             ("radio", "Album radio", "r"),
             ("go_artist", "Go to artist", ""),
             ("add_playlist", "Add to playlist…", "P"),
@@ -78,7 +80,8 @@ def menu_items(entry: Entry, page_kind: str, liked: bool) -> list[MenuItem]:
             ("shuffle", "Shuffle", "s"),
             ("radio", "Artist radio", "r"),
             ("play_next", "Play next", "N"),
-            ("add", "Add to queue", "a"),
+            ("add", "Add to Up Next", "a"),
+            ("play_last", "Play last", ""),
         ]
     if entry.kind == "playlist":
         return [
@@ -86,7 +89,8 @@ def menu_items(entry: Entry, page_kind: str, liked: bool) -> list[MenuItem]:
             ("play", "Play", ""),
             ("shuffle", "Shuffle", "s"),
             ("play_next", "Play next", "N"),
-            ("add", "Add to queue", "a"),
+            ("add", "Add to Up Next", "a"),
+            ("play_last", "Play last", ""),
         ]
     if entry.kind == "station":
         return [("play", "Play station", "enter")]
@@ -220,6 +224,7 @@ class MainScreen(Screen):
                 rows.append(Option(fmt.heading(e.label), disabled=True))
             else:
                 rows.append(Option(self._row(i, e, width, page, now, cols), id=str(i)))
+        browser.draggable = page.kind == "queue"
         browser.clear_options()
         browser.add_options(rows)
         if browser.option_count:
@@ -232,13 +237,15 @@ class MainScreen(Screen):
     def row_width(browser: Browser) -> int:
         """Cells a row may use: the list's width minus its padding and scrollbar, so long pages
         (which grow a scrollbar) never wrap."""
-        return max(30, browser.scrollable_content_region.width - 2)
+        # always leave room for the scrollbar: it appears only once the rows are in
+        scrollbar = browser.styles.scrollbar_size_vertical if not browser.show_vertical_scrollbar else 0
+        return max(30, browser.scrollable_content_region.width - scrollbar - 2)
 
     @staticmethod
     def track_columns(page: Page, width: int) -> fmt.Columns:
         tracks = [e.value for e in page.entries if e.kind == "track"]
         if page.kind == "queue":
-            numbers = list(range(1, len(tracks) + 1))
+            numbers = [int(e.label) + 1 for e in page.entries if e.kind == "track"]
         elif page.kind == "album":
             numbers = [t.index or 0 for t in tracks]  # type: ignore[union-attr]
         else:
@@ -249,7 +256,10 @@ class MainScreen(Screen):
         if e.kind == "track":
             t: Track = e.value  # type: ignore[assignment]
             if page.kind == "queue":
-                return fmt.track_row(t, cols, playing=i == self.tamp.player.queue.current, number=i + 1)
+                position = int(e.label)
+                return fmt.track_row(
+                    t, cols, playing=position == self.tamp.player.queue.current, number=position + 1
+                )
             album = page.kind == "album"
             playing = now is not None and now.id == t.id
             return fmt.track_row(t, cols, playing=playing, number=t.index if album else None)
@@ -444,7 +454,7 @@ class MainScreen(Screen):
             await self.play_from(lib.station_tracks, st, source=f"Radio · {st.title}")
         elif entry.kind == "track":
             if page.kind == "queue":
-                await player.jump(i)
+                await player.jump(int(entry.label))
             else:
                 tracks, start = track_block(page, i)
                 await player.play(tracks, start, source=page.source)
@@ -520,6 +530,20 @@ class MainScreen(Screen):
             self.notify("radio starts from a track, album or artist", severity="warning")
 
     # ── context menu ──
+    @guarded
+    async def on_browser_reorder(self, message: Browser.Reorder) -> None:
+        """A queue row was dragged to another row."""
+        page, browser = self.page, self.query_one("#browser", Browser)
+        if page is None or page.kind != "queue":
+            return
+        source = page.entries[int(browser.get_option_at_index(message.source).id or 0)]
+        target_option = browser.get_option_at_index(message.target)
+        if target_option.id is None or source.kind != "track":
+            return
+        target = page.entries[int(target_option.id)]
+        if target.kind == "track":
+            await self.tamp.player.move(int(source.label), int(target.label))
+
     def on_browser_menu_requested(self, message: Browser.MenuRequested) -> None:
         self.open_menu(message.x, message.y)
 
@@ -563,12 +587,16 @@ class MainScreen(Screen):
         elif choice == "play_next":
             await self.action_add_next()
         elif choice == "move_next":
-            target = player.queue.current + (1 if i > player.queue.current else 0)
-            await player.move(i, target)
+            position = int(entry.label)
+            await player.move(position, player.queue.current + (1 if position > player.queue.current else 0))
         elif choice == "add":
             await self.action_add()
         elif choice == "remove":
-            await player.remove(i)
+            await player.remove(int(entry.label))
+        elif choice == "play_last":
+            tracks = await self.tracks_of(entry)
+            await player.append(tracks)
+            self.notify(f"{len(tracks)} added at the end")
         elif choice == "radio":
             await self.radio_for(value)
         elif choice == "go_album" and isinstance(value, Track) and value.album_id:
@@ -659,8 +687,8 @@ class MainScreen(Screen):
     async def action_add(self) -> None:
         entry, _ = self.selected()
         if entry and (tracks := await self.tracks_of(entry)):
-            await self.tamp.player.append(tracks)
-            self.notify(f"added {len(tracks)} to the queue")
+            await self.tamp.player.add_up_next(tracks)
+            self.notify(f"added {len(tracks)} to Up Next")
 
     @guarded
     async def action_add_next(self) -> None:
@@ -704,15 +732,15 @@ class MainScreen(Screen):
 
     @guarded
     async def action_remove(self) -> None:
-        entry, i = self.selected()
+        entry, _ = self.selected()
         if self.page and self.page.kind == "queue" and entry and entry.kind == "track":
-            await self.tamp.player.remove(i)
+            await self.tamp.player.remove(int(entry.label))
 
     @guarded
     async def action_move(self, delta: int) -> None:
         entry, i = self.selected()
         if self.page and self.page.kind == "queue" and entry and entry.kind == "track":
-            await self.tamp.player.move(i, i + delta)
+            await self.tamp.player.move(int(entry.label), int(entry.label) + delta)
             self.query_one("#browser", Browser).highlighted = max(0, i + delta)
 
     @guarded

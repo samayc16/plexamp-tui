@@ -110,3 +110,64 @@ def test_config_round_trip_is_private(tmp_path, monkeypatch) -> None:
     loaded = config.load()
     assert loaded.signed_in and loaded.client_id == first.client_id
     assert not config.signed_out(loaded).signed_in
+
+
+# ── up next (Plexamp's queue model) ──
+def ids(q: Queue) -> list[str]:
+    return [t.id for t in q.tracks]
+
+
+def album_playing() -> Queue:
+    return Queue().play([track(n) for n in range(1, 5)], start=0)  # playing 1, rest 2 3 4
+
+
+def test_add_up_next_goes_before_the_rest_in_order() -> None:
+    q = album_playing().add_up_next([track(8)]).add_up_next([track(9)])
+    assert ids(q) == ["1", "8", "9", "2", "3", "4"]
+    assert [t.id for t in q.up_next] == ["8", "9"] and [t.id for t in q.rest] == ["2", "3", "4"]
+
+
+def test_play_next_goes_to_the_front_of_up_next() -> None:
+    q = album_playing().add_up_next([track(8)]).play_next([track(9)])
+    assert [t.id for t in q.up_next] == ["9", "8"]
+
+
+def test_play_last_goes_to_the_very_end() -> None:
+    q = album_playing().add_up_next([track(8)]).append([track(9)])
+    assert ids(q)[-1] == "9" and [t.id for t in q.up_next] == ["8"]
+
+
+def test_advancing_uses_up_up_next_first() -> None:
+    q = album_playing().add_up_next([track(8), track(9)])
+    q = q.advanced()
+    assert q.track.id == "8" and [t.id for t in q.up_next] == ["9"]
+    q = q.advanced().advanced()
+    assert q.track.id == "2" and q.queued == 0
+
+
+def test_jumping_back_leaves_up_next_as_part_of_the_rest() -> None:
+    q = album_playing().advanced().add_up_next([track(8)])  # playing 2, up next 8
+    assert q.jump(0).queued == 0
+    assert q.jump(q.current + 1).track.id == "8" and q.jump(q.current + 1).queued == 0
+
+
+def test_dragging_into_and_out_of_up_next() -> None:
+    q = album_playing().add_up_next([track(8)])  # 1 | 8 | 2 3 4
+    into = q.move(3, 2)  # drag "3" to just after "8"
+    assert ids(into) == ["1", "8", "3", "2", "4"] and [t.id for t in into.up_next] == ["8", "3"]
+    out = q.move(1, 4)  # drag "8" down among the rest
+    assert out.queued == 0 and ids(out) == ["1", "2", "3", "4", "8"]
+    within = into.move(2, 1)  # reorder inside up next
+    assert [t.id for t in within.up_next] == ["3", "8"]
+
+
+def test_removing_from_up_next_shrinks_it() -> None:
+    q = album_playing().add_up_next([track(8), track(9)])
+    assert q.remove(1).queued == 1 and q.remove(4).queued == 2
+
+
+def test_shuffle_keeps_up_next_in_order() -> None:
+    q = Queue().play([track(n) for n in range(10)], start=0).add_up_next([track(50), track(51)])
+    s = q.shuffled(random.Random(3))
+    assert [t.id for t in s.up_next] == ["50", "51"]
+    assert sorted(t.id for t in s.rest) == sorted(t.id for t in q.rest)
