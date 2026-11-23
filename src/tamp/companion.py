@@ -35,6 +35,7 @@ class Timeline:
     volume: int
     shuffle: bool
     repeat: int  # 0 off, 1 one, 2 all
+    play_queue_version: int = 0  # bumps when the queue's contents change
 
 
 class Companion:
@@ -146,5 +147,6 @@ class Companion:
                 volume=int(t.get("volume") or 100),
                 shuffle=t.get("shuffle") == "1",
                 repeat=int(t.get("repeat") or 0),
+                play_queue_version=int(t.get("playQueueVersion") or 0),
             )
         return None

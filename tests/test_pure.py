@@ -187,3 +187,10 @@ def test_moving_a_played_track_back_into_up_next() -> None:
     q = album_playing().advanced().advanced()  # 1 2 | playing 3 | 4
     moved = q.to_up_next(0, front=True)
     assert moved.track.id == "3" and [t.id for t in moved.up_next] == ["1"] and moved.history[0].id == "2"
+
+
+def test_mpv_args_keep_only_options_and_never_the_socket() -> None:
+    from tamp.config import mpv_args
+
+    assert mpv_args(["--ao=null", "rm -rf", "--input-ipc-server=/tmp/x", 3]) == ("--ao=null",)
+    assert mpv_args("--ao=null") == ()

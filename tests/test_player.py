@@ -9,7 +9,7 @@ from tamp import config
 from tamp.demo import DemoLibrary
 from tamp.models import Device, Playback, Stream, Track
 from tamp.mpv import Mpv
-from tamp.output import LocalOutput, ReadOnly
+from tamp.output import LocalOutput, ReadOnly, RemoteOutput
 from tamp.player import Player
 from tamp.queue import Queue
 from tamp.status import line as status_line
@@ -256,3 +256,27 @@ async def test_a_private_session_reports_nothing() -> None:
     player.finished(t)
     await asyncio.sleep(0.05)
     assert calls == []
+
+
+def _queue_of(names: str, current: int) -> Queue:
+    tracks = tuple(Track(id=n, title=n, artist="a", album="b", duration_ms=1000) for n in names)
+    return Queue(tracks=tracks, current=current, source="Phone")
+
+
+def test_following_a_player_shows_its_own_queue_but_not_one_we_gave_it() -> None:
+    out = RemoteOutput(Device(id="phone", name="Phone"), server=None, library=None)
+    fetched: list[str] = []
+    out._fetch_queue = lambda pq_id: fetched.append(pq_id) or _queue_of("xyz", 1)
+
+    out._follow_queue("10", 1, "y")  # a queue started on the phone
+    assert fetched == ["10"] and out._adopted and out._adopted.track.id == "y"
+    out._adopted = None
+    out._follow_queue("10", 1, "z")  # it moved on inside the same queue: nothing to fetch
+    assert fetched == ["10"] and out._adopted is None
+    out._follow_queue("10", 2, "z")  # something was added on the phone
+    assert fetched == ["10", "10"]
+
+    out._expect_own = True  # tamp handed it a queue (load)
+    out._follow_queue("11", 1, "q")
+    out._follow_queue("11", 2, "q")  # our own additions bump the version
+    assert fetched == ["10", "10"]

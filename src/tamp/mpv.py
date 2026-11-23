@@ -46,8 +46,11 @@ def private_dir(path: Path) -> None:
 
 
 class Mpv:
-    def __init__(self, socket: Path, on_event: Callable[[dict], None]) -> None:
+    def __init__(
+        self, socket: Path, on_event: Callable[[dict], None], extra_args: tuple[str, ...] = ()
+    ) -> None:
         self.socket = short_socket(socket)
+        self.extra_args = extra_args
         self.on_event = on_event
         self._process: asyncio.subprocess.Process | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -85,7 +88,8 @@ class Mpv:
             "--cache=yes",
             "--demuxer-max-bytes=64MiB",
             "--volume-max=100",
-            f"--input-ipc-server={self.socket}",
+            *self.extra_args,
+            f"--input-ipc-server={self.socket}",  # last, so nothing above can move the socket
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,

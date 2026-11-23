@@ -105,7 +105,9 @@ class MainScreen(Screen):
         Binding("space", "app.toggle", "play/pause"),
         Binding("n", "app.next", "next"),
         Binding("p", "app.prev", "prev"),
-        Binding("slash", "search", "search"),
+        # priority: handled the moment it arrives, so keys typed right after it are already routed
+        # to the search box, not to the list (where a adds, r starts radio, space pauses)
+        Binding("slash", "search", "search", priority=True),
         Binding("m", "menu", "menu"),
         Binding("F", "full_player", "player"),
         Binding("L", "lyrics", "lyrics"),
@@ -450,7 +452,8 @@ class MainScreen(Screen):
     async def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id == "nav":
             await self.open_section(event.option.id or "home")
-            self.query_one("#browser").focus()
+            if event.option_list.has_focus:  # not if you moved on (to search) while it loaded
+                self.query_one("#browser").focus()
         elif event.option_list.id == "browser":
             await self.activate()
 
@@ -673,9 +676,14 @@ class MainScreen(Screen):
     def action_search(self) -> None:
         self.show_lyrics(False)
         search = self.query_one("#search", Input)
+        if search.has_focus:  # a / typed in the search itself ("AC/DC")
+            search.insert_text_at_cursor("/")
+            return
         search.display = True
         search.value = ""
-        search.focus()
+        # focus now, not on the next tick: keys typed straight after / may already be queued, and
+        # in the list they're commands (a adds, r starts radio, space pauses)
+        self.set_focus(search)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "search":

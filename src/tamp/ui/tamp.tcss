@@ -5,6 +5,7 @@ Screen {
 }
 
 #topbar {
+    width: 100%;
     height: 1;
     background: #221f22;
 }
@@ -64,6 +65,7 @@ Screen {
 
 #np {
     width: 42;
+    background: #2d2a2e;  /* explicit, so pop-ups dim it evenly */
     border-left: solid #403e41;
     padding: 1 1 0 2;
 }
@@ -243,4 +245,19 @@ ContextMenu {
 #loading LoadingIndicator {
     height: 3;
     color: #ff6188;
+}
+
+/* scrollbars in the palette, not Textual's default blue */
+* {
+    scrollbar-background: #2d2a2e;
+    scrollbar-background-hover: #2d2a2e;
+    scrollbar-background-active: #2d2a2e;
+    scrollbar-color: #5b595c;
+    scrollbar-color-hover: #727072;
+    scrollbar-color-active: #ff6188;
+    scrollbar-corner-color: #2d2a2e;
+}
+
+#np > * {
+    background: #2d2a2e;
 }

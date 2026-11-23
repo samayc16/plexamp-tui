@@ -57,6 +57,11 @@ class Player:
         if resume and self.queue.track and getattr(output, "controllable", True):
             await self._guard(output.load(self.queue))
 
+    def adopt_queue(self, queue: Queue) -> None:
+        """A remote player's own queue (started on that device): show it, don't push it back."""
+        if self.remote:
+            self.queue = replace(queue, repeat=self.queue.repeat)
+
     @property
     def remote(self) -> bool:
         return isinstance(self.output, RemoteOutput)

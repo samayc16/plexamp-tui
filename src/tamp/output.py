@@ -265,6 +265,12 @@ class RemoteOutput:
         self._poller: asyncio.Task | None = None
         self._tracks: dict[str, Track] = {}
         self._seen: tuple[str, int, bool, float] | None = None  # track id, offset, playing, when
+        # the player's own queue, shown when it isn't one tamp handed it (you started it on the phone)
+        self.on_queue: Callable[[Queue], None] = lambda _queue: None
+        self._own_pq = ""  # the play queue made from tamp's queue: its tracks are already known
+        self._expect_own = False  # load() was called: the next new play queue is that one
+        self._pq_seen: tuple[str, int] = ("", -1)
+        self._adopted: Queue | None = None
 
     @property
     def controllable(self) -> bool:
@@ -285,6 +291,9 @@ class RemoteOutput:
         while True:
             try:
                 state = await asyncio.to_thread(self._read_state, time.monotonic())
+                if self._adopted is not None:
+                    queue, self._adopted = self._adopted, None
+                    self.on_queue(queue)
                 if state is not None:
                     self.state = state
                     self.on_change(state)
@@ -300,6 +309,7 @@ class RemoteOutput:
                 timeline = None  # gone quiet (asleep, off the Wi-Fi): fall back to the server
             if timeline is not None:
                 self.play_queue_id = timeline.play_queue_id or self.play_queue_id
+                self._follow_queue(timeline.play_queue_id, timeline.play_queue_version, timeline.rating_key)
                 track = self._track(timeline.rating_key) if timeline.rating_key else None
                 return self._playback(
                     track, timeline.time_ms, timeline.state == "playing", now, timeline.volume
@@ -312,6 +322,38 @@ class RemoteOutput:
         return self._playback(
             track, int(item.viewOffset or 0), (player.state or "") == "playing", now, self.state.volume
         )
+
+    def _follow_queue(self, pq_id: str, version: int, rating_key: str) -> None:
+        """Pick up the player's play queue when it's someone else's: one started on the phone, or
+        changed there. Runs in the poll thread."""
+        if not pq_id:
+            return
+        seen, self._pq_seen = self._pq_seen, (pq_id, version)
+        if pq_id != seen[0] and self._expect_own:
+            self._own_pq, self._expect_own = pq_id, False
+        if pq_id == self._own_pq:
+            return
+        playing_is_known = any(t.id == rating_key for t in self.queue.tracks)
+        if (pq_id, version) == seen and playing_is_known:
+            return
+        queue = self._fetch_queue(pq_id)
+        if queue is not None:
+            self.queue = self._adopted = queue
+
+    def _fetch_queue(self, pq_id: str) -> Queue | None:
+        from plexapi.playqueue import PlayQueue
+
+        try:  # own=False: read it, never take it over from the player
+            pq = PlayQueue.get(self.server, int(pq_id), own=False, window=REMOTE_WINDOW // 2)
+        except Exception:
+            return None
+        items = [item for item in pq.items if getattr(item, "type", "") == "track"]
+        tracks = tuple(self.library.track_from(item) for item in items)
+        self._tracks.update((t.id, t) for t in tracks)
+        current = next(
+            (i for i, item in enumerate(items) if item.playQueueItemID == pq.playQueueSelectedItemID), 0
+        )
+        return Queue(tracks=tracks, current=current if tracks else -1, source=self.device.name)
 
     def _track(self, rating_key: str) -> Track:
         if rating_key not in self._tracks:
@@ -356,6 +398,7 @@ class RemoteOutput:
         """Hand the player a window of tracks around the current one; it builds the queue."""
         companion = self._require()
         self.queue = queue
+        self._expect_own = True
         if queue.track is None:
             await self.stop()
             return

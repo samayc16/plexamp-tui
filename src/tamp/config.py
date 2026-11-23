@@ -37,6 +37,9 @@ class Config:
     device_id: str = "local"  # where to play: "local" or a player's machineIdentifier
     volume: int = 100
     loudness_leveling: bool = True
+    # extra mpv options for local playback, e.g. ["--audio-device=coreaudio/BuiltInSpeakerDevice"]
+    # (`mpv --audio-device=help` lists devices); options only, and never the control socket
+    mpv_args: tuple[str, ...] = ()
 
     @property
     def signed_in(self) -> bool:
@@ -49,8 +52,20 @@ def load() -> Config:
     except (OSError, ValueError):
         data = {}
     known = {k: v for k, v in data.items() if k in Config.__dataclass_fields__}
+    known["mpv_args"] = mpv_args(known.get("mpv_args", ()))
     config = Config(**known)
     return config if config.client_id else replace(config, client_id=str(uuid.uuid4()))
+
+
+def mpv_args(value: object) -> tuple[str, ...]:
+    """Keep the mpv options that are safe to pass: `--name[=value]`, not tamp's own IPC socket."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(
+        a
+        for a in value
+        if isinstance(a, str) and a.startswith("--") and not a.startswith("--input-ipc-server")
+    )
 
 
 def save(config: Config) -> None:

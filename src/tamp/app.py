@@ -79,7 +79,7 @@ class TampApp(App):
         if not self.demo:
             self.player.restore_queue()
         socket = config.MPV_SOCKET.with_name("mpv-demo.sock") if self.demo else config.MPV_SOCKET
-        mpv = Mpv(socket, self.on_mpv_event)
+        mpv = Mpv(socket, self.on_mpv_event, self.cfg.mpv_args)
         self.local = LocalOutput(
             self.library, mpv, self.player.changed, self.player.advanced, self.player.finished, self.loudness
         )
@@ -393,6 +393,7 @@ class TampApp(App):
                     self.notify(f"can't reach that player: {e}", severity="error")
                 return
             output.on_change = self.player.changed
+            output.on_queue = self.player.adopt_queue
             await self.player.use(output, resume=resume and output.controllable)
             self.device_name = self.shown_name(output.device)
             if not output.controllable and not quiet:
