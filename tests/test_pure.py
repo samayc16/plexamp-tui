@@ -212,3 +212,27 @@ def test_track_rows_are_exactly_the_width_whatever_the_mix() -> None:
                     for t in tracks:
                         row = fmt.track_row(t, cols, number=12 if numbers else None)
                         assert len(row.plain) == width, (title, artist, width, numbers, cols)
+
+
+def test_album_column_is_readable_or_absent() -> None:
+    from tamp.ui import fmt
+
+    tracks = [
+        Track(
+            id="1",
+            title="Heart of a Lion (Kid Cudi Theme Music)",
+            artist="Kid Cudi",
+            album="Man on the Moon: The End of Day",
+            duration_ms=1000,
+        ),
+        Track(
+            id="2",
+            title="Pursuit of Happiness (Nightmare)",
+            artist="Kid Cudi",
+            album="Man on the Moon",
+            duration_ms=1000,
+        ),
+    ]
+    for width in range(44, 140):
+        cols = fmt.columns(tracks, width, show_album=True, numbers=[1, 12])
+        assert cols.album == 0 or cols.album >= fmt.MIN_ALBUM, (width, cols)

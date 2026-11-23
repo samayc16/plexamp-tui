@@ -69,6 +69,7 @@ def columns(
     title = min(want_title, avail)
     artist = min(want_artist, max(MIN_ARTIST, avail - title - GAP))
     album = min(want_album, max(0, avail - title - artist - 2 * GAP)) if show_album else 0
+    album = album if album >= MIN_ALBUM else 0  # a sliver of album is just "…": leave it out
     # Not everything fits: share the room, titles first, and drop the album column below its minimum.
     if title + GAP + artist + (GAP + album if album else 0) > avail:
         artist = max(MIN_ARTIST, min(want_artist, (avail - GAP) * 3 // 10))

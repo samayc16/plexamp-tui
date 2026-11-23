@@ -8,7 +8,7 @@
 > [!WARNING]
 > **AI-assisted.** Most of the code was written by an AI assistant (Claude), with me steering, testing on my own setup and reviewing every change. It has an automated test suite and has been through security-minded reviews (see [How it works](#how-it-works)), but it hasn't had the scrutiny a hand-written project gets. The code is small and readable; please read it before trusting it. tamp is not affiliated with or endorsed by Plex.
 
-![tamp controlling Plexamp on an iPhone: Tame Impala's Currents, synced lyrics, colours taken from the album art](docs/hero.png)
+![tamp controlling Plexamp on an iPhone: Tame Impala's Currents, synced lyrics, colours taken from the album art](docs/screenshots/hero.png)
 
 ## Why
 
@@ -54,34 +54,34 @@ I spend my working day in a terminal and like to stay in flow there. I usually l
 
 ## Screenshots
 
-Everything here is my real library, playing on my iPhone or through mpv on my Mac.
+Everything here is my real library, playing on my iPhone or through mpv on my Mac. With the *auto* theme, every screen takes its colours from the album that's playing.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/remote-queue.png" alt="The queue of Plexamp on an iPhone, with the menu for a track: move to play next, move up or down, remove"><br>The phone's real queue, and every action for a row (right-click or <code>m</code>). Colours from <i>Upside Down</i>'s art.</td>
-    <td width="50%"><img src="docs/player.png" alt="The full-screen player: Weezer's blue album, synced lyrics with the sung line highlighted"><br><code>F</code>: full-screen player, following my iPhone</td>
+    <td width="50%"><img src="docs/screenshots/phone-queue.png" alt="The real queue of Plexamp on an iPhone, with the menu for a track: move to play next, move up or down, remove"><br>My phone's real queue, and every action for a row (right-click or <code>m</code>). Colours from White Town's cover.</td>
+    <td width="50%"><img src="docs/screenshots/player.png" alt="The full-screen player following an iPhone: Weezer's blue album, synced lyrics with the sung line highlighted"><br><code>F</code>: the full-screen player, following my iPhone</td>
   </tr>
   <tr>
-    <td><img src="docs/play-on.png" alt="The Play on picker listing this computer, an iPhone, a SHIELD TV and two Plexamps, over search results"><br><code>o</code>: play here or on any of your players; search as you type behind it</td>
-    <td><img src="docs/local.png" alt="Arctic Monkeys' Favourite Worst Nightmare playing on this computer with synced lyrics"><br>Playing here through mpv</td>
+    <td><img src="docs/screenshots/play-on.png" alt="The Play on picker listing this computer, an iPhone, a SHIELD TV and two Plexamps, over The Weeknd's After Hours"><br><code>o</code>: play here or on any of your players</td>
+    <td><img src="docs/screenshots/local.png" alt="Arctic Monkeys' Favourite Worst Nightmare playing on this computer with synced lyrics"><br>Playing here, through mpv</td>
   </tr>
   <tr>
-    <td><img src="docs/up-next.png" alt="The queue with Paramore playing and SZA and Kid Cudi in Up Next"><br>Up Next, like Plexamp's</td>
-    <td><img src="docs/themes.png" alt="The theme picker previewing Catppuccin Latte over SZA's artist page"><br><code>T</code>: themes, previewed live</td>
+    <td><img src="docs/screenshots/up-next.png" alt="The queue: Kid Cudi playing, White Town and SZA in Up Next, then the rest of the album"><br>Up Next, like Plexamp's</td>
+    <td><img src="docs/screenshots/themes.png" alt="The theme picker previewing Catppuccin Latte over Dominic Fike's artist page"><br><code>T</code>: themes, previewed live as you move</td>
   </tr>
   <tr>
-    <td><img src="docs/artist.png" alt="SZA's artist page: popular tracks and albums, coloured from SOS's art"><br>Artist pages</td>
-    <td><img src="docs/home.png" alt="The home page: mixes for you, recently played and recently added"><br>Home, from your server's hubs</td>
+    <td><img src="docs/screenshots/artist.png" alt="Dominic Fike's artist page: popular tracks and albums"><br>Artist pages</td>
+    <td><img src="docs/screenshots/home.png" alt="The home page: mixes for you, recently played and recently added"><br>Home, from your server's hubs</td>
   </tr>
   <tr>
-    <td><img src="docs/signin.png" alt="The sign-in screen with a link, a QR code and a plex.tv/link code"><br>Sign in with a link, a QR code or a code</td>
-    <td><img src="docs/help.png" alt="The searchable help screen"><br><code>?</code>: every key and mouse action, searchable</td>
+    <td><img src="docs/screenshots/signin.png" alt="The sign-in screen with a link, a QR code and a plex.tv/link code"><br>Sign in with a link, a QR code or a code</td>
+    <td><img src="docs/screenshots/help.png" alt="The searchable help screen"><br><code>?</code>: every key and mouse action, searchable</td>
   </tr>
 </table>
 
 ## Install
 
-tamp runs on macOS and Linux. You need Python 3.11+, [uv](https://docs.astral.sh/uv/) and mpv:
+tamp runs on macOS and Linux. You need a Plex Media Server with a music library, Python 3.11+, [uv](https://docs.astral.sh/uv/) and mpv:
 - macOS: `brew install mpv`
 - Debian / Ubuntu: `sudo apt install mpv`
 - Fedora: `sudo dnf install mpv`
@@ -93,6 +93,8 @@ tamp
 ```
 
 Update with `uv tool upgrade tamp`.
+
+Lyrics, sonic radio and similar artists come from your server's Plex Pass features (as they do in Plexamp). Without them, tamp still browses, plays and remote-controls; those parts just stay empty.
 
 **Signing in:** press `o` to open the Plex sign-in page or `c` to copy the link, scan the QR code with your phone, or enter the four-letter code at plex.tv/link. Then pick a Plex Home user (with their PIN if they have one), a server and a music library. `tamp logout` forgets it all.
 
@@ -132,13 +134,22 @@ The colours you can set: `bg`, `panel`, `overlay`, `line`, `select`, `hover`, `f
 
 ## Use it from tmux
 
+![nvim in tmux, with the song playing on my phone in the tmux status bar](docs/screenshots/tmux.png)
+
+What's playing, wherever it plays, in your status bar, plus Option/Alt keys that work from any pane:
+
 ```tmux
-set -g status-right '#(tamp status --tmux --width 40)%H:%M'
-bind-key M-p run-shell 'tamp toggle'
-bind-key M-n run-shell 'tamp next'
+set -g status-right '#(tamp status --tmux --width 40)  %H:%M'
+
+# Alt+p play/pause, Alt+n next, Alt+b back (no prefix); quietly nothing when tamp isn't running
+bind -n M-p run-shell -b 'tamp toggle >/dev/null 2>&1; true'
+bind -n M-n run-shell -b 'tamp next >/dev/null 2>&1; true'
+bind -n M-b run-shell -b 'tamp prev >/dev/null 2>&1; true'
 ```
 
-`tamp toggle`, `next`, `prev` and `stop` work from anywhere, which makes them handy for key bindings.
+On macOS, Option has to act as Alt in your terminal: `macos_option_as_alt yes` in kitty, *Use Option as Meta key* in iTerm2 or Terminal, `macos-option-as-alt = true` in Ghostty. Reload with `tmux source-file ~/.tmux.conf`.
+
+`tamp toggle`, `next`, `prev` and `stop` control the running tamp from anywhere, including when it's driving your phone.
 
 ## Roadmap
 

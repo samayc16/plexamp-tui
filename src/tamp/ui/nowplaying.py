@@ -208,7 +208,12 @@ class NowPlaying(Vertical):
         if not upcoming:
             return Text(self.queue.source, style=fmt.DIM)
         text = Text.assemble(
-            (f"up next · {self.queue.source}\n" if self.queue.source else "up next\n", f"bold {fmt.DIM}")
+            (
+                f"up next · {self.queue.source}\n"
+                if self.queue.source and not self.queue.queued
+                else "up next\n",
+                f"bold {fmt.DIM}",
+            )
         )
         for t in upcoming:
             text.append(fit(f"{t.title} · {t.artist}", width) + "\n", style=fmt.FG)
