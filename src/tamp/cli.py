@@ -41,7 +41,9 @@ def main(argv: list[str] | None = None) -> int:
         from tamp import status
 
         text = status.as_json() if args.json else status.line(args.width)
-        print(text + "  " if args.tmux and text else text)
+        if args.tmux and text:  # tmux reads #[…] and #(…) in status-right: a title mustn't
+            text = text.replace("#", "##") + "  "
+        print(text)
         return 0
     if args.command in ("toggle", "next", "prev", "stop"):
         from tamp.mpv import send

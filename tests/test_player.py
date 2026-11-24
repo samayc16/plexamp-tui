@@ -342,3 +342,18 @@ def test_a_queue_file_keeps_its_good_tracks_and_sane_positions() -> None:
 def test_status_line_survives_a_damaged_status_file() -> None:
     config.STATUS_FILE.write_text("[]")
     assert status_line() == ""
+
+
+def test_tmux_status_escapes_hashes_so_titles_cant_restyle_the_bar(capsys) -> None:
+    import os
+
+    from tamp.cli import main
+
+    config.write_state(
+        config.STATUS_FILE,
+        {"pid": os.getpid(), "state": "playing", "title": "C#m #[fg=red]", "artist": "#(rm x)"},
+    )
+    main(["status", "--tmux"])
+    assert capsys.readouterr().out == "▶ C##m ##[fg=red] · ##(rm x)  \n"
+    main(["status"])  # plain output stays as it is
+    assert capsys.readouterr().out == "▶ C#m #[fg=red] · #(rm x)\n"
