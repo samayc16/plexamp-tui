@@ -137,6 +137,10 @@ class Companion:
             params["token"] = transient
         self._get("/player/playback/playMedia", **params)
 
+    def skip_to(self, rating_key: str) -> None:
+        """Play another track of the queue the player already has (as plexapi's skipTo)."""
+        self._get("/player/playback/skipTo", key=f"/library/metadata/{rating_key}", type="music")
+
     def refresh_play_queue(self, play_queue_id: str) -> None:
         self._get("/player/playback/refreshPlayQueue", playQueueID=play_queue_id, type="music")
 

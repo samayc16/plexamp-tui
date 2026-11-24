@@ -285,6 +285,7 @@ class RemoteOutput:
         # after load(): the play queue the player had, and until when to wait for it to move on
         self._handoff: tuple[str, float] | None = None
         self._loads = 0  # counts load() calls: a queue fetched across one is stale
+        self._handed: frozenset[str] = frozenset()  # track ids in the window tamp last handed it
 
     @property
     def controllable(self) -> bool:
@@ -433,6 +434,7 @@ class RemoteOutput:
         self._handoff = (before, time.monotonic() + self.HANDOFF_S)
         start = max(0, queue.current - REMOTE_WINDOW // 4)
         window = [t.id for t in queue.tracks[start : start + REMOTE_WINDOW]]
+        self._handed = frozenset(window)
         try:
             await asyncio.to_thread(companion.play_queue, self.server, window, queue.track.id)
         except Exception:
@@ -440,27 +442,43 @@ class RemoteOutput:
             raise
 
     async def queue_changed(self, queue: Queue) -> None:
-        """Additions go into the player's own play queue on the server; nothing restarts."""
-        old = self.queue
+        """Only additions (add) and jumps (jump) reach a remote player; the Player refuses
+        other edits there, so there's nothing to send."""
         self.queue = queue
-        if self.companion is None or not self.play_queue_id:
-            return  # following only, or no queue to add to yet
-        known = {t.id for t in old.tracks}
-        added = [t for t in queue.tracks if t.id not in known]
-        if not added:
+
+    async def jump(self, queue: Queue) -> None:
+        """Play queue.track from the queue the player already has (skipTo), keeping that queue
+        whole: a playlist stays long, a station keeps going."""
+        companion = self._require()
+        if queue.track is None:
             return
-        play_next = tuple(added) == queue.tracks[queue.current + 1 : queue.current + 1 + len(added)]
-        companion, pq_id = self.companion, self.play_queue_id
+        ours = bool(self._own_pq) and self.play_queue_id == self._own_pq
+        if not self.play_queue_id or (ours and queue.track.id not in self._handed):
+            await self.load(queue)  # nothing there, or past tamp's own window: hand over a new one
+            return
+        await asyncio.to_thread(companion.skip_to, queue.track.id)
+        self.queue = queue
+
+    async def add(self, queue: Queue, tracks: list[Track], play_next: bool) -> None:
+        """Add tracks to the player's play queue on the server, at the front or the end of its
+        Up Next, as the Player did to `queue`; nothing restarts. Each track is added as itself,
+        so one already in the queue is added again. Read with own=0: never taken over."""
+        companion = self._require()
+        pq_id = self.play_queue_id
+        if not pq_id:
+            raise ReadOnly(f"{self.device.name} has nothing queued to add to: play something first")
 
         def push() -> None:
             from plexapi.playqueue import PlayQueue
 
-            pq = PlayQueue.get(self.server, int(pq_id))
-            for t in reversed(added) if play_next else added:
-                pq.addItem(self.server.fetchItem(int(t.id)), playNext=play_next, refresh=False)
+            pq = PlayQueue.get(self.server, int(pq_id), own=False)
+            for t in reversed(tracks) if play_next else tracks:  # play next: each goes to the front
+                item = self.server.fetchItem(f"/library/metadata/{t.id}")
+                pq.addItem(item, playNext=play_next, refresh=False)
             companion.refresh_play_queue(pq_id)
 
         await asyncio.to_thread(push)
+        self.queue = queue
 
     async def skip(self, step: int) -> None:
         await asyncio.to_thread(self._require().command, "skipNext" if step > 0 else "skipPrevious")

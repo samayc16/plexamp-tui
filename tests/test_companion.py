@@ -107,6 +107,13 @@ def test_create_play_queue_names_the_server_and_start(stub) -> None:
     )
 
 
+def test_skip_to_names_the_track_like_plexapi(stub) -> None:
+    Companion(stub.url, PLAYER_ID, "c", "t").skip_to("42")
+    path, query, _ = stub.requests[-1]
+    assert path == "/player/playback/skipTo"
+    assert query["key"] == "/library/metadata/42" and query["type"] == "music"
+
+
 def test_timeline_and_identity(stub) -> None:
     c = Companion(stub.url, PLAYER_ID, "c", "t")
     stub.rating_key = "42"

@@ -12,7 +12,7 @@ from dataclasses import asdict, replace
 from tamp import config
 from tamp.errors import describe
 from tamp.library import Library
-from tamp.models import Playback, Track
+from tamp.models import Device, Playback, Track
 from tamp.output import LocalOutput, Output, ReadOnly, RemoteOutput, TaskSet
 from tamp.queue import REPEAT_MODES, Queue
 
@@ -29,6 +29,7 @@ class Player:
         report: bool = True,
         persist: bool = True,
     ) -> None:
+        self.name_of: Callable[[Device], str] = lambda d: d.name  # the app hides names on request
         self.report = report  # False: a private session, nothing goes to Plex's history
         # False: the queue and status files belong to someone else (another tamp, or the demo)
         self.persist = persist
@@ -72,14 +73,26 @@ class Player:
     def remote(self) -> bool:
         return isinstance(self.output, RemoteOutput)
 
-    async def _guard(self, coro) -> None:
-        """Run an output command; a player that refuses control becomes a message, not a crash."""
+    async def _guard(self, coro) -> bool:
+        """Run an output command; a player that refuses control becomes a message, not a crash.
+        True if it went through."""
         try:
             await coro
         except ReadOnly as e:
             self.on_error(describe(e))
         except Exception as e:  # network errors talking to a remote player
-            self.on_error(f"{self.output.device.name if self.output else 'player'}: {describe(e)}")
+            self.on_error(f"{self.name_of(self.output.device) if self.output else 'player'}: {describe(e)}")
+        else:
+            return True
+        return False
+
+    def _refused_remotely(self, what: str) -> bool:
+        """Edits a remote player's queue can't take from tamp yet: say so, change nothing.
+        (Sending them would mean rewriting the phone's own queue on the server.)"""
+        if not self.remote or self.output is None:
+            return False
+        self.on_error(f"{what} isn't available when playing on {self.name_of(self.output.device)} yet")
+        return True
 
     def replace_track(self, track: Track) -> None:
         """A track's details changed (liked): update every copy in the queue."""
@@ -148,34 +161,61 @@ class Player:
         self._scrobbled = None
         await self._load()
 
-    async def play_next(self, tracks: list[Track]) -> None:
-        await self._mutate(self.queue.play_next(tracks))
+    async def play_next(self, tracks: list[Track]) -> bool:
+        return await self._add(self.queue.play_next(tracks), tracks, play_next=True)
 
-    async def add_up_next(self, tracks: list[Track]) -> None:
-        await self._mutate(self.queue.add_up_next(tracks))
+    async def add_up_next(self, tracks: list[Track]) -> bool:
+        return await self._add(self.queue.add_up_next(tracks), tracks, play_next=False)
 
-    async def append(self, tracks: list[Track]) -> None:
+    async def append(self, tracks: list[Track]) -> bool:
+        if self.queue.track is not None and self._refused_remotely("Play last"):
+            return False  # a server play queue only takes additions into Up Next
         await self._mutate(self.queue.append(tracks))
+        return True
+
+    async def _add(self, queue: Queue, tracks: list[Track], play_next: bool) -> bool:
+        """True if the tracks were added (and, on a remote player, reached it)."""
+        if not (self.remote and self.queue.track is not None):
+            await self._mutate(queue)
+            return True
+        if not await self._guard(self.output.add(queue, list(tracks), play_next)):  # type: ignore[union-attr]
+            return False
+        self.queue = queue
+        self._save_queue()
+        self.on_update(self.state, self.queue)
+        return True
 
     async def remove(self, index: int) -> None:
+        if self._refused_remotely("Removing tracks"):
+            return
         if index == self.queue.current and len(self.queue.tracks) > 1:
             await self.jump(index + 1 if index + 1 < len(self.queue.tracks) else index - 1)
         await self._mutate(self.queue.remove(index))  # an empty queue stops the output
 
-    async def move(self, index: int, to: int) -> None:
+    async def move(self, index: int, to: int) -> bool:
+        if self._refused_remotely("Moving tracks"):
+            return False
         await self._mutate(self.queue.move(index, to))
+        return True
 
     async def to_up_next(self, index: int, front: bool = True) -> int:
         """Move a queued track into Up Next; returns where it ended up."""
         if not 0 <= index < len(self.queue.tracks) or index == self.queue.current:
             return index
+        if self._refused_remotely("Moving tracks"):
+            return index
         await self._mutate(self.queue.to_up_next(index, front))
         return self.queue.current + 1 if front else self.queue.current + self.queue.queued
 
-    async def shuffle(self) -> None:
+    async def shuffle(self) -> bool:
+        if self._refused_remotely("Shuffling the queue"):
+            return False
         await self._mutate(self.queue.shuffled())
+        return True
 
     async def clear_upcoming(self) -> None:
+        if self._refused_remotely("Clearing the queue"):
+            return
         await self._mutate(self.queue.clear_upcoming())
 
     async def cycle_repeat(self) -> None:
@@ -188,7 +228,14 @@ class Player:
     async def jump(self, index: int) -> None:
         if not 0 <= index < len(self.queue.tracks):
             return
-        self.queue = self.queue.jump(index)
+        queue = self.queue.jump(index)
+        if self.remote and self.output:  # skip within the player's queue; never replace it
+            if await self._guard(self.output.jump(queue)):  # type: ignore[attr-defined]
+                self.queue = queue
+                self._save_queue()
+                self.on_update(self.state, self.queue)
+            return
+        self.queue = queue
         self._scrobbled = None
         await self._load()
 

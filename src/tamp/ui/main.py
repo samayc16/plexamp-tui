@@ -622,8 +622,8 @@ class MainScreen(Screen):
             await player.remove(int(entry.label))
         elif choice == "play_last":
             tracks = await self.tracks_of(entry)
-            await player.append(tracks)
-            self.notify(f"{len(tracks)} added at the end")
+            if await player.append(tracks):
+                self.notify(f"{len(tracks)} added at the end")
         elif choice == "radio":
             await self.radio_for(value)
         elif choice == "go_album" and isinstance(value, Track) and value.album_id:
@@ -720,8 +720,7 @@ class MainScreen(Screen):
         entry, _ = self.selected()
         if self.on_queue_track(entry):  # in the queue: move it to the end of Up Next
             self.focus_queue_position(await self.tamp.player.to_up_next(int(entry.label), front=False))
-        elif entry and (tracks := await self.tracks_of(entry)):
-            await self.tamp.player.add_up_next(tracks)
+        elif entry and (tracks := await self.tracks_of(entry)) and await self.tamp.player.add_up_next(tracks):
             self.notify(f"added {len(tracks)} to Up Next")
 
     @guarded
@@ -729,8 +728,7 @@ class MainScreen(Screen):
         entry, _ = self.selected()
         if self.on_queue_track(entry):  # in the queue: move it to play next
             self.focus_queue_position(await self.tamp.player.to_up_next(int(entry.label), front=True))
-        elif entry and (tracks := await self.tracks_of(entry)):
-            await self.tamp.player.play_next(tracks)
+        elif entry and (tracks := await self.tracks_of(entry)) and await self.tamp.player.play_next(tracks):
             self.notify(f"{len(tracks)} playing next")
 
     @guarded
@@ -778,8 +776,8 @@ class MainScreen(Screen):
         if self.on_queue_track(entry):
             position = int(entry.label)
             target = min(max(0, position + delta), len(self.tamp.player.queue.tracks) - 1)
-            await self.tamp.player.move(position, target)
-            self.focus_queue_position(target)
+            if await self.tamp.player.move(position, target):
+                self.focus_queue_position(target)
 
     @guarded
     async def action_clear_upcoming(self) -> None:
@@ -787,8 +785,8 @@ class MainScreen(Screen):
 
     @guarded
     async def action_shuffle_queue(self) -> None:
-        await self.tamp.player.shuffle()
-        self.notify("shuffled what's up next")
+        if await self.tamp.player.shuffle():
+            self.notify("shuffled what's up next")
 
     def action_save_queue(self) -> None:
         tracks = list(self.tamp.player.queue.tracks)

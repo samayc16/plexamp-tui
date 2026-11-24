@@ -177,6 +177,7 @@ class TampApp(App):
             report=not self.private,
             persist=not self.demo,  # the demo's queue mustn't replace yours
         )
+        self.player.name_of = self.shown_name
         if not self.demo:
             self.player.restore_queue()
         socket = config.MPV_SOCKET.with_name("mpv-demo.sock") if self.demo else config.MPV_SOCKET

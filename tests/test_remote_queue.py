@@ -37,6 +37,8 @@ class Phone:
         self.switch_after = switch_after  # how long it takes to move to a queue tamp hands it
         self.handoffs = 0
         self.commands: list[tuple] = []
+        self.adds: list[tuple[str, bool]] = []  # what reached its play queue on the server
+        self.errors: list[str] = []  # what tamp told you about it
         self._next = 100
 
     def timeline(self, wait: bool = False) -> Timeline:
@@ -59,9 +61,15 @@ class Phone:
             self.pq, self.key, self.version = new, start_key, 1
 
         if self.switch_after:
-            threading.Timer(self.switch_after, switch).start()
+            timer = threading.Timer(self.switch_after, switch)
+            timer.daemon = True  # one that never fires mustn't hold up the test run's exit
+            timer.start()
         else:
             switch()
+
+    def skip_to(self, rating_key: str) -> None:
+        self.commands.append(("skip_to", rating_key))
+        self.key = rating_key
 
     def __getattr__(self, name: str):
         def record(*args, **kwargs) -> None:
@@ -83,17 +91,28 @@ def phone_queues(monkeypatch):
             for n, k in enumerate(keys)
         ]
         selected = keys.index(phone.key) if phone.key in keys else 0
-        return SimpleNamespace(items=items, playQueueSelectedItemID=items[selected].playQueueItemID)
+
+        def add_item(item, playNext=False, refresh=True) -> None:
+            phone.adds.append((str(item.ratingKey), playNext))
+            keys.insert(keys.index(phone.key) + 1, str(item.ratingKey))  # simplified Up Next
+            phone.version += 1
+
+        return SimpleNamespace(
+            items=items, playQueueSelectedItemID=items[selected].playQueueItemID, addItem=add_item
+        )
 
     monkeypatch.setattr(plexapi.playqueue.PlayQueue, "get", classmethod(get))
     return phones
 
 
+SERVER = SimpleNamespace(fetchItem=lambda key: SimpleNamespace(ratingKey=key.rsplit("/", 1)[-1]))
+
+
 async def _following(phone: Phone, phones: list[Phone], handoff_s: float = 5.0):
     phones.append(phone)
-    out = RemoteOutput(Device("phone", "iPhone"), server=None, library=Lib(), companion=phone)
+    out = RemoteOutput(Device("phone", "iPhone"), server=SERVER, library=Lib(), companion=phone)
     out.POLL_S, out.HANDOFF_S = 0.02, handoff_s
-    player = Player(Lib(), on_update=lambda s, q: None, report=False)
+    player = Player(Lib(), on_update=lambda s, q: None, on_error=phone.errors.append, report=False)
     adopted: list[list[str]] = []
 
     def adopt(queue) -> None:
@@ -179,3 +198,75 @@ def test_which_play_queues_are_fetched() -> None:
     assert not out._wants_queue("10", 2, "z")  # still the old one: the hand-off is on its way
     assert not out._wants_queue("11", 1, "q")  # the new one is ours
     assert not out._wants_queue("11", 2, "q")  # and our own additions bump its version
+
+
+# ── editing the phone's queue from tamp ──
+async def _on_phone(phone_queues) -> tuple[RemoteOutput, Player, Phone]:
+    phone = Phone({"1": ["p1", "p2", "p3", "p4"]})
+    out, player, _ = await _following(phone, phone_queues)
+    await asyncio.sleep(0.1)
+    assert ids(player) == ["p1", "p2", "p3", "p4"]
+    return out, player, phone
+
+
+async def test_adding_a_track_already_queued_still_reaches_the_phone(phone_queues) -> None:
+    out, player, phone = await _on_phone(phone_queues)
+    try:
+        assert await player.add_up_next([T("p3")]), phone.errors
+        assert phone.adds == [("p3", False)] and ("refresh_play_queue", "1") in phone.commands
+        assert await player.play_next([T("x"), T("y")])
+        assert phone.adds[1:] == [("y", True), ("x", True)]  # each to the front: x ends up first
+        await asyncio.sleep(0.1)
+        assert ids(player)[:3] == ["p1", "x", "y"] and phone.errors == []
+    finally:
+        await out.close()
+
+
+async def test_choosing_a_queue_row_skips_to_it_without_replacing_the_queue(phone_queues) -> None:
+    out, player, phone = await _on_phone(phone_queues)
+    try:
+        await player.jump(2)
+        assert phone.commands == [("skip_to", "p3")] and phone.handoffs == 0
+        await asyncio.sleep(0.1)
+        assert ids(player) == ["p1", "p2", "p3", "p4"] and player.queue.current == 2
+    finally:
+        await out.close()
+
+
+async def test_a_jump_past_what_tamp_handed_the_phone_hands_it_more(phone_queues) -> None:
+    from tamp.output import REMOTE_WINDOW
+
+    phone = Phone({"1": ["p1"]})
+    out, player, _ = await _following(phone, phone_queues)
+    try:
+        await player.play([T(str(n)) for n in range(REMOTE_WINDOW * 2)], 0)
+        await asyncio.sleep(0.1)
+        await player.jump(5)  # inside the window it has: skip
+        assert phone.commands == [("skip_to", "5")] and phone.handoffs == 1
+        await player.jump(REMOTE_WINDOW + 50)  # beyond it: tamp's own queue, so hand over a new window
+        assert phone.handoffs == 2 and phone.key == str(REMOTE_WINDOW + 50)
+    finally:
+        await out.close()
+
+
+@pytest.mark.parametrize(
+    ("edit", "what"),
+    [
+        (lambda p: p.remove(2), "Removing tracks"),
+        (lambda p: p.remove(0), "Removing tracks"),  # the playing one
+        (lambda p: p.move(3, 1), "Moving tracks"),
+        (lambda p: p.to_up_next(3), "Moving tracks"),
+        (lambda p: p.shuffle(), "Shuffling the queue"),
+        (lambda p: p.clear_upcoming(), "Clearing the queue"),
+        (lambda p: p.append([T("z")]), "Play last"),
+    ],
+)
+async def test_edits_the_phone_cant_take_yet_say_so_and_change_nothing(phone_queues, edit, what) -> None:
+    out, player, phone = await _on_phone(phone_queues)
+    try:
+        before = player.queue
+        await edit(player)
+        assert player.queue == before and phone.commands == [] and phone.adds == []
+        assert phone.errors == [f"{what} isn't available when playing on iPhone yet"]
+    finally:
+        await out.close()
