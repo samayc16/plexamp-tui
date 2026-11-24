@@ -84,3 +84,13 @@ async def test_previewing_a_theme_in_auto_is_not_repainted() -> None:
         await pilot.press("escape")
         await pilot.pause(0.2)
     theme.activate(theme.BUILT_IN[theme.DEFAULT])
+
+
+def test_action_rows_take_the_colour_of_the_theme_in_use() -> None:
+    try:
+        for name in ("dracula", "nord"):
+            theme.activate(theme.BUILT_IN[name])
+            row = fmt.action_row("+", "New playlist…")
+            assert str(row.spans[0].style) == theme.BUILT_IN[name].playing, name
+    finally:
+        theme.activate(theme.BUILT_IN[theme.DEFAULT])

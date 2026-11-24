@@ -141,8 +141,9 @@ def playlist_row(p: Playlist, width: int) -> Text:
     )
 
 
-def action_row(icon: str, label: str, colour: str = colour("GREEN")) -> Text:
-    return Text.assemble((f"  {icon} ", colour), (label, f"bold {colour}"))
+def action_row(icon: str, label: str, tint: str | None = None) -> Text:
+    tint = tint or colour("GREEN")  # looked up now: the theme may have changed since import
+    return Text.assemble((f"  {icon} ", tint), (label, f"bold {tint}"))
 
 
 def heading(label: str) -> Text:
