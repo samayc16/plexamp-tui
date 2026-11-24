@@ -192,14 +192,15 @@ def players(token: str) -> list[PlayerInfo]:
     return found
 
 
-def gdm_players(timeout: float = 1.5) -> dict[str, PlayerInfo]:
-    """Players that answer Plex's LAN discovery broadcast (GDM)."""
+def gdm_players() -> dict[str, PlayerInfo]:
+    """Players that answer Plex's LAN discovery broadcast (GDM). plexapi listens until a
+    second passes with no answer."""
     from plexapi.gdm import GDM
 
     found: dict[str, PlayerInfo] = {}
     try:
         gdm = GDM()
-        gdm.scan(scan_for_clients=True, timeout=timeout)
+        gdm.scan(scan_for_clients=True)
     except Exception:
         return found
     for entry in gdm.entries:
