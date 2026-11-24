@@ -111,7 +111,9 @@ def write_state(path: Path, data: dict) -> None:
 
 
 def read_state(path: Path) -> dict:
+    """A state file's contents; {} when it's missing, unreadable or not a JSON object."""
     try:
-        return json.loads(path.read_text())
+        data = json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}

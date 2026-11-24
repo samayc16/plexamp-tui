@@ -307,3 +307,38 @@ async def test_a_failing_action_shows_its_error_without_the_token() -> None:
     screen = Screen()
     await screen.act()
     assert screen.messages and "abc123" not in screen.messages[0]
+
+
+@pytest.mark.parametrize("text", ["[1, 2]", '"x"', "{broken", '{"tracks": 5}', '{"tracks": [3, null]}'])
+def test_a_damaged_queue_file_starts_empty(text: str) -> None:
+    config.QUEUE_FILE.write_text(text)
+    player = Player(DemoLibrary(), lambda s, q: None)
+    player.restore_queue()
+    assert player.queue.tracks == ()
+
+
+def test_a_queue_file_keeps_its_good_tracks_and_sane_positions() -> None:
+    import json
+
+    good = {"id": "1", "title": "t", "artist": "a", "album": "b", "duration_ms": 1000}
+    config.QUEUE_FILE.write_text(
+        json.dumps(
+            {
+                "tracks": [good, "junk", {**good, "id": 2}, {**good, "duration_ms": "long"}, {"id": "x"}],
+                "current": "x",
+                "queued": 99,
+                "repeat": ["all"],
+                "source": 5,
+            }
+        )
+    )
+    player = Player(DemoLibrary(), lambda s, q: None)
+    player.restore_queue()
+    q = player.queue
+    assert [t.id for t in q.tracks] == ["1"]
+    assert (q.current, q.queued, q.repeat, q.source) == (0, 0, "off", "")
+
+
+def test_status_line_survives_a_damaged_status_file() -> None:
+    config.STATUS_FILE.write_text("[]")
+    assert status_line() == ""

@@ -331,20 +331,23 @@ class Player:
             config.write_state(config.QUEUE_FILE, data)
 
     def restore_queue(self) -> None:
+        """The queue from last time. A damaged file (hand-edited, half-written, another
+        version's) never stops tamp: bad tracks are skipped and positions kept in range."""
         data = config.read_state(config.QUEUE_FILE)
-        try:
-            tracks = tuple(Track(**t) for t in data.get("tracks", []))
-        except TypeError:  # saved by an older version
+        saved = data.get("tracks")
+        tracks = tuple(t for t in map(_saved_track, saved) if t) if isinstance(saved, list) else ()
+        if not tracks:
             return
-        if tracks:
-            repeat = data.get("repeat", "off")
-            self.queue = Queue(
-                tracks=tracks,
-                current=min(int(data.get("current", 0)), len(tracks) - 1),
-                repeat=repeat if repeat in REPEAT_MODES else "off",
-                queued=max(0, int(data.get("queued", 0))),
-                source=data.get("source", ""),
-            )
+        current, queued = _int(data.get("current")), _int(data.get("queued"))
+        current = min(max(current, 0), len(tracks) - 1)
+        repeat, source = data.get("repeat"), data.get("source")
+        self.queue = Queue(
+            tracks=tracks,
+            current=current,
+            repeat=repeat if isinstance(repeat, str) and repeat in REPEAT_MODES else "off",
+            queued=min(max(queued, 0), len(tracks) - current - 1),
+            source=source if isinstance(source, str) else "",
+        )
 
     def _write_status(self) -> None:
         if not self.persist:
@@ -369,3 +372,22 @@ class Player:
             return
         with contextlib.suppress(OSError):
             config.STATUS_FILE.unlink()
+
+
+def _int(value: object) -> int:
+    return value if type(value) is int else 0
+
+
+_TEXT_FIELDS = ("id", "title", "artist", "album", "album_id", "artist_id")
+
+
+def _saved_track(data: object) -> Track | None:
+    """A track from queue.json, or None if it isn't one."""
+    if not isinstance(data, dict):
+        return None
+    try:
+        track = Track(**{k: v for k, v in data.items() if k in Track.__dataclass_fields__})
+    except TypeError:  # a required field is missing
+        return None
+    sane = all(isinstance(getattr(track, f), str) for f in _TEXT_FIELDS) and type(track.duration_ms) is int
+    return track if sane else None
