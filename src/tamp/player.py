@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 
 from tamp import config
+from tamp.errors import describe
 from tamp.library import Library
 from tamp.models import Playback, Track
 from tamp.output import LocalOutput, Output, ReadOnly, RemoteOutput, TaskSet
@@ -73,9 +74,9 @@ class Player:
         try:
             await coro
         except ReadOnly as e:
-            self.on_error(str(e))
+            self.on_error(describe(e))
         except Exception as e:  # network errors talking to a remote player
-            self.on_error(f"{self.output.device.name if self.output else 'player'}: {e}")
+            self.on_error(f"{self.output.device.name if self.output else 'player'}: {describe(e)}")
 
     def replace_track(self, track: Track) -> None:
         """A track's details changed (liked): update every copy in the queue."""

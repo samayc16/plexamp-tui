@@ -13,6 +13,7 @@ from textual.app import App
 
 from tamp import art, config, plex
 from tamp.demo import DemoLibrary
+from tamp.errors import describe
 from tamp.library import Library, PlexLibrary
 from tamp.lrc import Lyrics
 from tamp.models import THIS_DEVICE, Playback, Track
@@ -152,7 +153,7 @@ class TampApp(App):
         try:
             self.library = DemoLibrary() if self.demo else await self.connect_plex()
         except Exception as e:  # network, auth, no music library
-            self.exit(1, message=f"tamp: {e}")
+            self.exit(1, message=Text(f"tamp: {describe(e)}"))
             return
         self.player = Player(
             self.library,
@@ -444,7 +445,7 @@ class TampApp(App):
                 ):
                     options.append((device.id, self.shown_name(device), device.product))
             except Exception as e:
-                self.notify(f"couldn't list players: {e}", severity="warning")
+                self.notify(f"couldn't list players: {describe(e)}", severity="warning")
         current = next((i for i, o in enumerate(options) if o[0] == self.cfg.device_id), 0)
         rows = [
             Text.assemble(
@@ -479,7 +480,7 @@ class TampApp(App):
                 )
             except Exception as e:
                 if not quiet:
-                    self.notify(f"can't reach that player: {e}", severity="error")
+                    self.notify(f"can't reach that player: {describe(e)}", severity="error")
                 return
             output.on_change = self.player.changed
             output.on_queue = self.player.adopt_queue

@@ -295,3 +295,38 @@ async def test_switching_output_shows_the_new_outputs_state_not_the_old_one() ->
     assert player.state.track is not None
     await player.use(here)
     assert player.state.track is None  # not "playing" the phone's song on this computer
+
+
+async def test_a_failing_player_shows_its_error_without_the_token() -> None:
+    import requests
+
+    class Leaky(FakeOutput):
+        async def toggle(self) -> None:
+            raise requests.ConnectionError("http://10.0.0.2:32500/player/playback/play?token=abc123")
+
+    errors: list[str] = []
+    player = Player(DemoLibrary(), lambda s, q: None, on_error=errors.append)
+    await player.use(Leaky())
+    await player.play(tracks(1))
+    player.state = Playback(track=player.queue.track)
+    await player.toggle()
+    assert errors and "abc123" not in errors[0] and errors[0].startswith("Fake: ")
+
+
+async def test_a_failing_action_shows_its_error_without_the_token() -> None:
+    from tamp.ui.main import guarded
+
+    class Screen:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        def notify(self, message: str, **_kw) -> None:
+            self.messages.append(message)
+
+        @guarded
+        async def act(self) -> None:
+            raise RuntimeError("(401) unauthorized; http://h:32400/x?X-Plex-Token=abc123")
+
+    screen = Screen()
+    await screen.act()
+    assert screen.messages and "abc123" not in screen.messages[0]

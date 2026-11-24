@@ -17,6 +17,7 @@ from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from tamp import plex
+from tamp.errors import describe
 from tamp.ui import fmt
 
 
@@ -78,7 +79,7 @@ class SignInScreen(Screen[str]):
             self.login = await asyncio.to_thread(plex.start_login, self.client_id)
         except Exception as e:  # offline, DNS, plex.tv down
             self.query_one("#signin-status", Static).update(
-                Text(f"couldn't reach plex.tv: {e}\npress n to try again", style=fmt.PINK)
+                Text(f"couldn't reach plex.tv: {describe(e)}\npress n to try again", style=fmt.PINK)
             )
             return
         steps = Text.assemble(

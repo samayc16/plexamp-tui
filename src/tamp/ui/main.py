@@ -18,6 +18,7 @@ from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from tamp import art
+from tamp.errors import describe
 from tamp.models import Album, Artist, Playlist, Track
 from tamp.ui import fmt, pages
 from tamp.ui.browser import Browser, Entry, Page, all_tracks, track_block
@@ -33,7 +34,7 @@ def guarded(fn):
         try:
             return await fn(self, *args, **kwargs)
         except Exception as e:
-            self.notify(str(e) or type(e).__name__, severity="error")
+            self.notify(describe(e), severity="error")
 
     return wrapper
 
@@ -329,7 +330,7 @@ class MainScreen(Screen):
         try:
             result = await asyncio.to_thread(fn, *args)
         except Exception as e:
-            self.notify(f"{title}: {e}", severity="error")
+            self.notify(f"{title}: {describe(e)}", severity="error")
             self.render_page()
             return
         self.push(build(result), replace_all=replace_all, replace_top=replace_top)
@@ -385,7 +386,7 @@ class MainScreen(Screen):
             hubs = await asyncio.to_thread(app.library.home)
         except Exception as e:
             if shown is None:
-                self.notify(f"Home: {e}", severity="error")
+                self.notify(f"Home: {describe(e)}", severity="error")
             return
         app.store_home(hubs)
         if shown is None:

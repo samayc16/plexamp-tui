@@ -15,6 +15,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import replace
 from typing import Any, Protocol
 
+from tamp.errors import describe
 from tamp.library import Library
 from tamp.models import THIS_DEVICE, Device, Playback, Stream, Track
 from tamp.mpv import Mpv, MpvError
@@ -58,7 +59,7 @@ class TaskSet:
     def _done(self, task: asyncio.Task) -> None:
         self._tasks.discard(task)
         if not task.cancelled() and (exc := task.exception()) is not None:
-            self.on_error(str(exc) or type(exc).__name__)
+            self.on_error(describe(exc))
 
     def cancel_all(self) -> None:
         for task in self._tasks:
@@ -200,7 +201,7 @@ class LocalOutput:
             try:
                 await self._append(nxt, "append")
             except Exception as e:  # can't fetch the next stream: play on, say why it'll stop
-                self.on_error(f"couldn't queue {nxt.title}: {e}")
+                self.on_error(f"couldn't queue {nxt.title}: {describe(e)}")
                 return
             self._loaded.append(nxt.id)
 
