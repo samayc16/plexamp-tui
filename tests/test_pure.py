@@ -289,3 +289,24 @@ def test_queue_invariants_hold_through_any_sequence_of_edits() -> None:
             assert (q.current == -1) if not q.tracks else (0 <= q.current < len(q.tracks)), where
             if op in keeps_playing and before.track is not None and not (op == "move" and q is before):
                 assert q.track == before.track, where
+
+
+@pytest.mark.parametrize("text", ["[]", '"x"', "3", "null", "{not json"])
+def test_a_config_file_that_isnt_an_object_gives_the_defaults(tmp_path, monkeypatch, text) -> None:
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config.json")
+    config.CONFIG_FILE.write_text(text)
+    loaded = config.load()
+    assert loaded.client_id and not loaded.signed_in and loaded.theme == config.Config().theme
+
+
+def test_config_values_of_the_wrong_type_fall_back_to_their_defaults(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config.json")
+    config.CONFIG_FILE.write_text(
+        '{"client_id": "abc", "user_token": 123, "loudness_leveling": "no", "theme": 5,'
+        ' "device_id": null, "mpv_args": "--ao=null", "user_title": "me", "unknown": 1}'
+    )
+    loaded = config.load()
+    assert (loaded.client_id, loaded.user_title) == ("abc", "me")  # the good ones stay
+    assert loaded.user_token == "" and loaded.loudness_leveling is True
+    assert loaded.theme == config.Config().theme and loaded.device_id == "local"
+    assert loaded.mpv_args == ()

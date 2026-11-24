@@ -52,10 +52,24 @@ def load() -> Config:
         data = json.loads(CONFIG_FILE.read_text())
     except (OSError, ValueError):
         data = {}
-    known = {k: v for k, v in data.items() if k in Config.__dataclass_fields__}
-    known["mpv_args"] = mpv_args(known.get("mpv_args", ()))
-    config = Config(**known)
+    config = Config(**_valid(data if isinstance(data, dict) else {}))
     return config if config.client_id else replace(config, client_id=str(uuid.uuid4()))
+
+
+def _valid(data: dict) -> dict:
+    """The fields that have the right type. Anything else (a hand edit gone wrong, "no" for
+    false) falls back to its default instead of crashing tamp or passing through."""
+    defaults = Config()
+    fields: dict = {}
+    for name in Config.__dataclass_fields__:
+        if name not in data:
+            continue
+        value = data[name]
+        if name == "mpv_args":
+            fields[name] = mpv_args(value)
+        elif type(value) is type(getattr(defaults, name)):  # exact: true isn't 1, 1 isn't true
+            fields[name] = value
+    return fields
 
 
 def mpv_args(value: object) -> tuple[str, ...]:
