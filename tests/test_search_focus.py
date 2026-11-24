@@ -26,3 +26,20 @@ async def test_a_slash_inside_search_is_just_text() -> None:
         await pilot.press("slash", "a", "c", "slash", "d", "c")
         await pilot.pause(0.2)
         assert app.screen.query_one("#search", Input).value == "ac/dc"
+
+
+async def test_row_commands_reach_the_main_screen() -> None:
+    from tamp.ui.menus import ContextMenu
+
+    app = TampApp(demo=True)
+    async with app.run_test(size=(120, 36)) as pilot:
+        await pilot.pause(0.5)
+        await pilot.press("3")  # Albums: the first row is an album
+        await pilot.pause(0.3)
+        await pilot.press("m")  # a command from tamp.ui.commands, bound on the main screen
+        await pilot.pause(0.2)
+        assert isinstance(app.screen, ContextMenu)
+        await pilot.press("escape")
+        await pilot.press("a")  # add the highlighted row to Up Next
+        await pilot.pause(0.3)
+        assert app.player.queue.tracks

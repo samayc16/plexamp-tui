@@ -291,7 +291,7 @@ async def test_a_failing_player_shows_its_error_without_the_token() -> None:
 
 
 async def test_a_failing_action_shows_its_error_without_the_token() -> None:
-    from tamp.ui.main import guarded
+    from tamp.ui.commands import guarded
 
     class Screen:
         def __init__(self) -> None:

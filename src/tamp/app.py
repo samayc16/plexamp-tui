@@ -24,7 +24,8 @@ from tamp.output import LocalOutput, RemoteOutput, TaskSet
 from tamp.player import Player
 from tamp.queue import Queue
 from tamp.ui import fmt, theme
-from tamp.ui.main import MainScreen, guarded
+from tamp.ui.commands import guarded
+from tamp.ui.main import MainScreen
 from tamp.ui.menus import Choose
 from tamp.ui.nowplaying import NowPlaying, PlayerScreen, Seek, lyric_seek
 from tamp.ui.signin import LoadingScreen, PickScreen, PinScreen, SignInScreen, server_rows, user_rows
