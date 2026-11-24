@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from tamp.companion import Timeline
 from tamp.errors import describe
-from tamp.library import Library
+from tamp.library import QUICK_TIMEOUT, Library, with_timeout
 from tamp.models import THIS_DEVICE, Device, Playback, Stream, Track
 from tamp.mpv import Mpv, MpvError
 from tamp.queue import Queue
@@ -258,6 +258,7 @@ class RemoteOutput:
 
     POLL_S = 1.0
     HANDOFF_S = 15.0  # how long a player may take to move to a queue tamp handed it
+    FAILURES_BEFORE_SAYING = 5  # polls in a row that fail before it's worth a message
 
     def __init__(
         self,
@@ -269,9 +270,12 @@ class RemoteOutput:
     ) -> None:
         self.device = device
         self.server = server
+        self._quick = with_timeout(server, QUICK_TIMEOUT)  # for what's asked every second
         self.library = library
         self.companion = companion
         self.on_change = on_change or (lambda _state: None)
+        self.on_error: Callable[[str], None] = lambda _m: None
+        self._failures = 0
         self.queue = Queue()
         self.state = Playback()
         self.play_queue_id = ""
@@ -306,8 +310,11 @@ class RemoteOutput:
         while True:
             try:
                 await self._poll_once()
-            except Exception:  # a flaky network shouldn't take the UI down; try again next second
-                pass
+                self._failures = 0
+            except Exception as e:  # a flaky network shouldn't take the UI down; try again
+                self._failures += 1
+                if self._failures == self.FAILURES_BEFORE_SAYING:  # not a blip: say so, once
+                    self.on_error(f"can't follow this player: {describe(e)} (still trying)")
             await asyncio.sleep(self.POLL_S)
 
     async def _poll_once(self, now: float | None = None) -> None:
@@ -369,7 +376,7 @@ class RemoteOutput:
         from plexapi.playqueue import PlayQueue
 
         try:  # own=False: read it, never take it over from the player
-            pq = PlayQueue.get(self.server, int(pq_id), own=False, window=REMOTE_WINDOW // 2)
+            pq = PlayQueue.get(self._quick, int(pq_id), own=False, window=REMOTE_WINDOW // 2)
         except Exception:
             return None
         items = [item for item in pq.items if getattr(item, "type", "") == "track"]
@@ -386,7 +393,7 @@ class RemoteOutput:
         return self._tracks[rating_key]
 
     def _session(self):
-        for item in self.server.sessions():
+        for item in self._quick.sessions():
             player = getattr(item, "player", None)
             if player is not None and player.machineIdentifier == self.device.id and item.type == "track":
                 return item, player

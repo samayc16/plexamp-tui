@@ -13,6 +13,7 @@ from textual.app import App
 from textual.notifications import SeverityLevel
 
 from tamp import art, config, plex
+from tamp.background import DaemonExecutor
 from tamp.demo import DemoLibrary
 from tamp.errors import describe, redact
 from tamp.library import Library, PlexLibrary
@@ -157,6 +158,7 @@ class TampApp(App):
             self.notify(f"theme {problem}", severity="warning", timeout=10)
 
         loop = asyncio.get_running_loop()
+        loop.set_default_executor(DaemonExecutor())  # quitting never waits on the network
         for sig in (signal.SIGHUP, signal.SIGTERM):  # closed terminal / killed pane: clean up mpv
             with contextlib.suppress(NotImplementedError, RuntimeError):
                 loop.add_signal_handler(sig, self.exit)
@@ -509,6 +511,7 @@ class TampApp(App):
                 return
             output.on_change = self.player.changed
             output.on_queue = self.player.adopt_queue
+            output.on_error = self.player.on_error
             await self.player.use(output, resume=resume and output.controllable)
             self.device_name = self.shown_name(output.device)
             if not output.controllable and not quiet:

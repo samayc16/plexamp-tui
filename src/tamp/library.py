@@ -4,6 +4,7 @@ All methods block on the network; call them from a thread."""
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import random
 from typing import Protocol
@@ -60,6 +61,17 @@ HUB_ITEMS = 14
 PAGE = 300  # big libraries are browsed a page at a time ("Load more…")
 LIST_LIMIT = 1000
 SERVER_TIMEOUT = 60  # a 60,000-album library can take a while to sort
+QUICK_TIMEOUT = 5  # one item, or what a player is doing: asked every second while following
+
+
+def with_timeout(server, seconds: float):
+    """The same server connection (session, token, address) with its own timeout, for calls
+    that must give up quickly while browsing keeps the long one."""
+    if server is None:
+        return None
+    view = copy.copy(server)
+    view._timeout = seconds
+    return view
 
 
 class PlexLibrary:
@@ -68,6 +80,7 @@ class PlexLibrary:
     def __init__(self, server: PlexServer, section_id: str = "") -> None:
         server._timeout = max(getattr(server, "_timeout", 0) or 0, SERVER_TIMEOUT)
         self.server = server
+        self.quick = with_timeout(server, QUICK_TIMEOUT)
         sections = [s for s in server.library.sections() if s.type == "artist"]
         if not sections:
             raise LookupError(f"{server.friendlyName} has no music library")
@@ -127,7 +140,9 @@ class PlexLibrary:
         )
 
     def track(self, track_id: str) -> Track:
-        return self._track(self._obj(track_id))
+        """One track by id (a remote player's, while following it: quick)."""
+        obj = self._items.get(track_id) or self.quick.fetchItem(int(track_id))
+        return self._track(obj)
 
     def track_from(self, item) -> Track:
         """A plexapi track (e.g. from a session) as a Track."""
