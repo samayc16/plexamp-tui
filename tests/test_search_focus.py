@@ -7,9 +7,7 @@ from textual.widgets import Input
 from tamp.app import TampApp
 
 
-async def test_type_ahead_after_slash_lands_in_search(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+async def test_type_ahead_after_slash_lands_in_search() -> None:
     app = TampApp(demo=True)
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause(0.5)
@@ -21,9 +19,7 @@ async def test_type_ahead_after_slash_lands_in_search(tmp_path, monkeypatch) -> 
         assert app.player.queue.queued == 0  # "a" didn't add anything to Up Next
 
 
-async def test_a_slash_inside_search_is_just_text(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+async def test_a_slash_inside_search_is_just_text() -> None:
     app = TampApp(demo=True)
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause(0.5)

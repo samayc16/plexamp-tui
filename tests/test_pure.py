@@ -236,3 +236,11 @@ def test_album_column_is_readable_or_absent() -> None:
     for width in range(44, 140):
         cols = fmt.columns(tracks, width, show_album=True, numbers=[1, 12])
         assert cols.album == 0 or cols.album >= fmt.MIN_ALBUM, (width, cols)
+
+
+def test_the_suite_never_sees_your_real_config_or_state() -> None:
+    from pathlib import Path
+
+    home = Path.home()
+    for path in (config.CONFIG_DIR, config.STATE_DIR, config.CACHE_DIR):
+        assert home not in path.parents, path
