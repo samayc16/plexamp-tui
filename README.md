@@ -18,11 +18,11 @@ I spend my working day in a terminal and like to stay in flow there. I usually l
 
 **Remote control** (`o`, "Play on")
 - Control Plexamp on your phone, desktop or headless box: play, pause, skip, seek, volume, and queue anything.
-- It shows that device's *real* queue, the one you started on the phone, and keeps the lyrics in time.
+- It shows that device's *real* queue, the one you started on the phone, and keeps the lyrics in time. You can add to that queue and jump around in it.
 - When a player can't be reached (your phone left the Wi-Fi), tamp still follows along: now playing, art and lyrics.
 
 **Plays here too**
-- Gapless playback through [mpv](https://mpv.io), with loudness leveling from Plex's own sonic analysis.
+- Gapless playback through [mpv](https://mpv.io), with loudness leveling from Plex's own sonic analysis (mpv 0.38 or newer).
 - Plays are reported to Plex, so history, play counts and "recently played" stay right everywhere.
 
 **Lyrics**
@@ -58,7 +58,7 @@ Everything here is my real library, playing on my iPhone or through mpv on my Ma
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/phone-queue.png" alt="The real queue of Plexamp on an iPhone, with the menu for a track: move to play next, move up or down, remove"><br>My phone's real queue, and every action for a row (right-click or <code>m</code>). Colours from White Town's cover.</td>
+    <td width="50%"><img src="docs/screenshots/phone-queue.png" alt="The real queue of Plexamp on an iPhone, with the menu for a track: move to play next, move up or down, remove"><br>My phone's real queue, and the menu for a row (right-click or <code>m</code>). On a phone, tamp adds to the queue and jumps within it; moving and removing tracks there isn't supported yet. Colours from White Town's cover.</td>
     <td width="50%"><img src="docs/screenshots/player.png" alt="The full-screen player following an iPhone: Weezer's blue album, synced lyrics with the sung line highlighted"><br><code>F</code>: the full-screen player, following my iPhone</td>
   </tr>
   <tr>
@@ -81,7 +81,7 @@ Everything here is my real library, playing on my iPhone or through mpv on my Ma
 
 ## Install
 
-tamp runs on macOS and Linux. You need a Plex Media Server with a music library, Python 3.11+, [uv](https://docs.astral.sh/uv/) and mpv:
+tamp runs on macOS and Linux. You need a Plex Media Server with a music library, Python 3.11+, [uv](https://docs.astral.sh/uv/) and mpv 0.35 or newer. Loudness leveling needs mpv 0.38; with an older one (Ubuntu 24.04 ships 0.37, Debian 12 ships 0.35) tamp plays without it and says so.
 - macOS: `brew install mpv`
 - Debian / Ubuntu: `sudo apt install mpv`
 - Fedora: `sudo dnf install mpv`
@@ -114,6 +114,8 @@ Press `o` to choose where music plays. tamp finds players three ways: Plexamp on
 
 **Away from home:** Plexamp's own remote control works through a private Plex cloud relay that other apps can't use, so tamp only follows there.
 
+**The player's queue:** tamp shows it as it is, adds to it (*Play next*, *Add to Up Next*) and jumps to any track in it without replacing it. Moving, removing or shuffling its tracks, clearing it and *Play last* aren't available on a remote player yet; tamp says so instead of changing only its own copy.
+
 ## Themes
 
 Press `T` to pick one; it's remembered. To make your own, add `~/.config/tamp/themes/<name>.toml`. Start from a built-in, then change any of its colours:
@@ -141,10 +143,9 @@ What's playing, wherever it plays, in your status bar, plus Option/Alt keys that
 ```tmux
 set -g status-right '#(tamp status --tmux --width 40)  %H:%M'
 
-# Alt+p play/pause, Alt+n next, Alt+b back (no prefix); quietly nothing when tamp isn't running
+# Alt+p play/pause, Alt+n next (no prefix); quietly nothing when tamp isn't running
 bind -n M-p run-shell -b 'tamp toggle >/dev/null 2>&1; true'
 bind -n M-n run-shell -b 'tamp next >/dev/null 2>&1; true'
-bind -n M-b run-shell -b 'tamp prev >/dev/null 2>&1; true'
 ```
 
 On macOS, Option has to act as Alt in your terminal: `macos_option_as_alt yes` in kitty, *Use Option as Meta key* in iTerm2 or Terminal, `macos-option-as-alt = true` in Ghostty. Reload with `tmux source-file ~/.tmux.conf`.
@@ -172,13 +173,16 @@ Ideas, roughly in order. Issues and PRs are very welcome.
 
 **Your Plex token:**
 - It's stored in `~/.config/tamp/config.json`, readable only by you.
-- It's sent as a header, never in a URL or on a command line.
-- It only goes to players at addresses plex.tv lists for your own devices, or to a player that first identified itself without it.
-- Reading another player's queue never takes it over from that player.
+- It goes to plex.tv, to your Plex server, and to a player you control, always as a header: never in a URL or on a command line (mpv gets it over its control socket). Error messages have it taken out before they're shown.
+- A player is first asked who it is without the token. The token follows only if it answers as the device you picked, at an address plex.tv lists for that device (or Plexamp on this computer), and only if that address is this computer or on a network it's directly attached to (the same /24, or /64 for IPv6). Away from home, whatever sits at your phone's home address gets nothing unless it's on the network you're attached to and answers with your phone's own identifier.
+- A player found only by the LAN broadcast (GDM) counts as listed only if plex.tv lists that same IP for it: anything on the network can answer the broadcast in another device's name.
+- Anywhere else tamp controls the player without the token, which some players refuse.
+- The one token in a URL: a player that can't take a queue the current way (some TVs, such as a SHIELD) gets the older `playMedia` command, whose protocol carries a token for your server in its query string. tamp sends a short-lived one made for that, as Plex's own apps do, never yours, and only to a player that may have the token.
+- Reading or adding to another player's queue never takes it over from that player.
 
 **Testing:**
 - Unit and UI tests cover the queue and Up Next, lyrics, themes, the search and drag behaviour, playback (with a real mpv, including the gapless hand-offs) and the remote-control protocol (against a stub player).
-- They run on Ubuntu and macOS for every push.
+- They run on Ubuntu (the latest, and 24.04 for its older mpv) and macOS for every push.
 - Day to day it's used on macOS with a Plex server and Plexamp on an iPhone. Linux should work the same (it's Python and mpv), and reports are welcome.
 
 ## Contributing
