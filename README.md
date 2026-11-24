@@ -1,6 +1,6 @@
-# tamp
+# plexamp-tui
 
-**A Plexamp-style music player and remote for the terminal.** Browse your Plex library, follow synced lyrics, edit the queue, and play right in the terminal, or drive Plexamp on your phone, desktop or headless box from it.
+**A Plexamp-style music player and remote for the terminal.** Browse your Plex library, follow synced lyrics, edit the queue, and play right in the terminal, or drive Plexamp on your phone, desktop or headless box from it. The command is `tamp`.
 
 > [!NOTE]
 > **Work in progress: a proof of concept.** It's what I use every day, but it's young. Expect rough edges, and please open an issue when something breaks.
@@ -88,11 +88,11 @@ tamp runs on macOS and Linux. You need a Plex Media Server with a music library,
 - Arch: `sudo pacman -S mpv`
 
 ```sh
-uv tool install git+https://github.com/samayc16/tamp
+uv tool install git+https://github.com/samayc16/plexamp-tui
 tamp
 ```
 
-Update with `uv tool upgrade tamp`.
+Update with `uv tool upgrade plexamp-tui`.
 
 Lyrics, sonic radio and similar artists come from your server's Plex Pass features (as they do in Plexamp). Without them, tamp still browses, plays and remote-controls; those parts just stay empty.
 
@@ -184,6 +184,8 @@ Ideas, roughly in order. Issues and PRs are very welcome.
 ## Contributing
 
 Issues, ideas and pull requests are all welcome. Please be kind: this started as a tool for my own setup, and I'm sharing it in case it helps yours.
+
+Not to be confused with [spiercey/plexamp-tui](https://github.com/spiercey/plexamp-tui), a separate project in Go: a lightweight controller for headless Plexamp.
 
 ## Development
 

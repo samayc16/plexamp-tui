@@ -1,5 +1,5 @@
 [project]
-name = "tamp"
+name = "plexamp-tui"
 version = "0.1.0"
 description = "A keyboard-driven Plex music player for the terminal: local gapless playback or remote control"
 readme = "README.md"
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/samayc16/tamp"
+Homepage = "https://github.com/samayc16/plexamp-tui"
 
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-asyncio>=0.24"]
