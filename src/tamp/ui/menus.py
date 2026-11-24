@@ -10,6 +10,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical, VerticalScroll
+from textual.content import Content
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
@@ -39,7 +40,7 @@ class ContextMenu(ModalScreen[str]):
         ]
         with Vertical(id="menu") as menu:
             menu.styles.width = width + 2
-            menu.border_title = fmt.fit(self.title_text, width - 2).rstrip()
+            menu.border_title = Content(fmt.fit(self.title_text, width - 2).rstrip())  # not markup
             yield OptionList(*rows, markup=False, id="menu-list")
 
     def on_mount(self) -> None:
@@ -166,7 +167,7 @@ class InfoScreen(ModalScreen[None]):
         table.add_column(style=fmt.DIM, no_wrap=True)
         table.add_column(style=fmt.FG)
         for key, value in self.rows:
-            table.add_row(key, value)
+            table.add_row(Text(key), Text(value))  # a str cell would be read as markup
         with Vertical(id="info"):
             yield Static(Text(self.title_text, style=f"bold {fmt.PINK}"))
             if self.art:

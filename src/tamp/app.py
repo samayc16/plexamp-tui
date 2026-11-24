@@ -10,10 +10,11 @@ from dataclasses import replace
 from rich.text import Text
 from textual import work
 from textual.app import App
+from textual.notifications import SeverityLevel
 
 from tamp import art, config, plex
 from tamp.demo import DemoLibrary
-from tamp.errors import describe
+from tamp.errors import describe, redact
 from tamp.library import Library, PlexLibrary
 from tamp.lrc import Lyrics
 from tamp.models import THIS_DEVICE, Playback, Track
@@ -57,6 +58,20 @@ class TampApp(App):
         self._art_palettes: dict[str, theme.Palette] = {}  # album art (thumb) → its auto palette
         self._previewing = False  # the theme picker is open: auto mustn't repaint over the preview
         theme.activate(self.resolve_theme(self.cfg.theme))
+
+    def notify(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: SeverityLevel = "information",
+        timeout: float | None = None,
+        markup: bool = False,
+    ) -> None:
+        """Every notification is plain text, whoever sends it (screens pass markup=True). Titles
+        and errors are full of square brackets ("Song [Live]"), which markup would eat, fail on
+        ("a[/i]") or run ("[@click=…]"); and no token ever reaches the screen."""
+        super().notify(redact(message), title=title, severity=severity, timeout=timeout, markup=False)
 
     # ── themes ──
     def get_css_variables(self) -> dict[str, str]:
@@ -166,7 +181,13 @@ class TampApp(App):
         socket = config.MPV_SOCKET.with_name("mpv-demo.sock") if self.demo else config.MPV_SOCKET
         mpv = Mpv(socket, self.on_mpv_event, self.cfg.mpv_args)
         self.local = LocalOutput(
-            self.library, mpv, self.player.changed, self.player.advanced, self.player.finished, self.loudness
+            self.library,
+            mpv,
+            self.player.changed,
+            self.player.advanced,
+            self.player.finished,
+            self.loudness,
+            on_error=self.player.on_error,  # "couldn't queue …": say why the music will stop
         )
         await self.push_screen(MainScreen())
         try:
