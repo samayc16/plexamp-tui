@@ -190,3 +190,12 @@ async def test_the_demo_never_writes_your_queue_or_status() -> None:
         await app.player.play(app.library.liked()[:2] or tracks(2), 0)
         await pilot.pause(0.3)
     assert not config.QUEUE_FILE.exists() and not config.STATUS_FILE.exists()
+
+
+async def test_repeat_all_on_a_single_track_queues_it_again() -> None:
+    mpv = FakeMpv((0, 38))
+    out = _output(mpv, library=GainLibrary())
+    await out.load(Queue(tracks=tuple(tracks(1)), current=0, repeat="all"))
+    assert [c[1:3] for c in mpv.loadfiles()] == [("tone://0", "replace"), ("tone://0", "append")]
+    await out.set_repeat("off")  # and off again: nothing after it
+    assert mpv.commands[-1] == ("playlist-remove", 1)

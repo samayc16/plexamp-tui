@@ -198,8 +198,10 @@ class LocalOutput:
         """Make mpv's second entry the queue's next track (or nothing). Call with the lock held."""
         if not self._loaded:
             return
-        after = self.queue.advanced()
-        nxt = after.track if self.queue.repeat != "one" and after.current != self.queue.current else None
+        after, repeat = self.queue.advanced(), self.queue.repeat
+        # repeat all wraps, even from a lone track back to itself; off stops at the end
+        moves_on = repeat == "all" or (repeat == "off" and after.current != self.queue.current)
+        nxt = after.track if moves_on else None
         want = nxt.id if nxt else None
         have = self._loaded[1] if len(self._loaded) > 1 else None
         if want == have:
