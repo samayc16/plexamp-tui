@@ -11,6 +11,7 @@ import hashlib
 import itertools
 import json
 import os
+import re
 import shutil
 import signal
 import stat
@@ -24,6 +25,12 @@ OBSERVED = ("time-pos", "duration", "pause", "playlist-pos", "volume", "idle-act
 
 class MpvError(RuntimeError):
     pass
+
+
+def parse_version(text: object) -> tuple[int, int] | None:
+    """(major, minor) from mpv's `mpv-version` ("mpv 0.37.0", "mpv v0.38.0-458-g1234abcd")."""
+    found = re.search(r"(\d+)\.(\d+)", text) if isinstance(text, str) else None
+    return (int(found[1]), int(found[2])) if found else None
 
 
 def short_socket(path: Path) -> Path:
@@ -57,6 +64,7 @@ class Mpv:
         self._reader_task: asyncio.Task | None = None
         self._pending: dict[int, asyncio.Future] = {}
         self._ids = itertools.count(1)
+        self.version: tuple[int, int] | None = None  # known once started
 
     @property
     def running(self) -> bool:
@@ -109,6 +117,8 @@ class Mpv:
         self._reader_task = asyncio.create_task(self._read(reader))
         for n, name in enumerate(OBSERVED, start=1):
             await self.command("observe_property", n, name)
+        with contextlib.suppress(MpvError):
+            self.version = parse_version(await self.get("mpv-version"))
 
     @property
     def _pidfile(self) -> Path:

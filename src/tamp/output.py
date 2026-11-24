@@ -23,6 +23,7 @@ from tamp.mpv import Mpv, MpvError
 from tamp.queue import Queue
 
 REMOTE_WINDOW = 100  # tracks handed to a remote player around the current one
+PER_FILE_GAIN = (0, 38)  # the first mpv with volume-gain, set per track through loadfile
 
 
 class Output(Protocol):
@@ -98,6 +99,7 @@ class LocalOutput:
         self._headers: tuple[tuple[str, str], ...] | None = None
         self._lock = asyncio.Lock()  # one playlist edit at a time
         self._tasks = TaskSet(lambda m: self.on_error(f"playback: {m}"))
+        self._said_no_gain = False
 
     async def start(self) -> None:
         await self.mpv.start()
@@ -145,10 +147,18 @@ class LocalOutput:
         if stream.headers != self._headers:
             await self.mpv.set("http-header-fields", [f"{k}: {v}" for k, v in stream.headers])
             self._headers = stream.headers
-        options = {}
-        if self.loudness and stream.gain_db is not None:
-            options["volume-gain"] = f"{stream.gain_db:.2f}"
-        await self.mpv.command("loadfile", stream.url, mode, -1, options)
+        if not self.loudness or stream.gain_db is None:
+            await self.mpv.command("loadfile", stream.url, mode)
+        elif self.mpv.version is not None and self.mpv.version < PER_FILE_GAIN:
+            # volume-gain, and loadfile's index argument before the options, came in mpv 0.38
+            if not self._said_no_gain:
+                self._said_no_gain = True
+                have = ".".join(map(str, self.mpv.version))
+                self.on_error(f"loudness leveling needs mpv 0.38 or newer (this is {have})")
+            await self.mpv.command("loadfile", stream.url, mode)
+        else:
+            gain = {"volume-gain": f"{stream.gain_db:.2f}"}
+            await self.mpv.command("loadfile", stream.url, mode, -1, gain)
 
     async def load(self, queue: Queue) -> None:
         """Play queue.track from the start, with the next one prefetched."""
