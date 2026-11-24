@@ -77,10 +77,12 @@ class Queue:
         if not 0 <= index < len(self.tracks):
             return self
         tracks = self.tracks[:index] + self.tracks[index + 1 :]
+        if index == self.current:
+            if index < len(tracks):  # the next track takes its place, using up one of up next
+                return replace(self, tracks=tracks, queued=max(0, self.queued - 1))
+            return replace(self, tracks=tracks, current=len(tracks) - 1, queued=0)  # it was the last
         queued = self.queued - (1 if self._in_up_next(index) else 0)
         current = self.current - (1 if index < self.current else 0)
-        if index == self.current:
-            current = min(self.current, len(tracks) - 1)
         return replace(self, tracks=tracks, current=current, queued=max(0, queued))
 
     def move(self, index: int, to: int) -> Queue:
@@ -90,8 +92,8 @@ class Queue:
             return self
         items = list(self.tracks)
         items.insert(to, items.pop(index))
-        if index == self.current:
-            return replace(self, tracks=tuple(items), current=to)
+        if index == self.current:  # what now follows it isn't what you added
+            return replace(self, tracks=tuple(items), current=to, queued=0)
         was_queued = self._in_up_next(index)
         current = self.current - (1 if index < self.current else 0)  # after taking the track out
         queued = self.queued - (1 if was_queued else 0)

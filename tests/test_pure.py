@@ -244,3 +244,48 @@ def test_the_suite_never_sees_your_real_config_or_state() -> None:
     home = Path.home()
     for path in (config.CONFIG_DIR, config.STATE_DIR, config.CACHE_DIR):
         assert home not in path.parents, path
+
+
+def test_removing_or_moving_the_playing_track_keeps_up_next_inside_the_queue() -> None:
+    q = Queue().play([track(1), track(2)], start=0).add_up_next([track(8)])  # 1 | 8 | 2
+    gone = q.remove(0)  # 8 plays now: it was the up-next track, so up next is used up
+    assert gone.track.id == "8" and gone.queued == 0
+    last = Queue().play([track(1), track(2)], start=1).remove(1)
+    assert last.track.id == "1" and last.queued == 0
+    moved = q.move(0, 2)  # 8 2 | 1: nothing after it is something you added
+    assert moved.track.id == "1" and moved.queued == 0
+
+
+def test_queue_invariants_hold_through_any_sequence_of_edits() -> None:
+    """A property test over random edits: current stays in range, Up Next never runs past the
+    end, and edits that aren't jumps keep the same track playing."""
+    rng = random.Random(20261124)
+    fresh = iter(range(1000, 10**6))
+    keeps_playing = {"play_next", "add_up_next", "append", "move", "to_up_next", "shuffled"}
+    for _ in range(3000):
+        q = Queue().play([track(n) for n in range(rng.randint(1, 6))], start=0)
+        for _ in range(12):
+            n = len(q.tracks)
+            op = rng.choice(
+                ["play_next", "add_up_next", "append", "remove", "move", "to_up_next", "jump"]
+                + ["advanced", "shuffled", "clear_upcoming", "cycle_repeat"]
+            )
+            if op in ("play_next", "add_up_next", "append"):
+                args: tuple = ([track(next(fresh)) for _ in range(rng.randint(1, 3))],)
+            elif op == "move":
+                args = (rng.randrange(n), rng.randrange(n)) if n else (0, 0)
+            elif op == "to_up_next":
+                args = (rng.randrange(n), rng.random() < 0.5) if n else (0, True)
+            elif op in ("remove", "jump"):
+                args = (rng.randrange(n),) if n else (0,)
+            elif op == "shuffled":
+                args = (random.Random(rng.random()),)
+            else:
+                args = ()
+            before = q
+            q = getattr(q, op)(*args)
+            where = (op, args, ids(before), before.current, before.queued)
+            assert 0 <= q.queued <= len(q.tracks) - q.current - 1, where
+            assert (q.current == -1) if not q.tracks else (0 <= q.current < len(q.tracks)), where
+            if op in keeps_playing and before.track is not None and not (op == "move" and q is before):
+                assert q.track == before.track, where
