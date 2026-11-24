@@ -175,6 +175,7 @@ class TampApp(App):
             self.on_player_update,
             on_error=lambda m: self.notify(m, severity="warning"),
             report=not self.private,
+            persist=not self.demo,  # the demo's queue mustn't replace yours
         )
         if not self.demo:
             self.player.restore_queue()

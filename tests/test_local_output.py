@@ -176,3 +176,17 @@ async def test_the_app_stands_aside_when_another_tamp_runs(monkeypatch) -> None:
         await pilot.pause(0.5)
         assert app.player.persist is False
     assert config.read_state(config.STATUS_FILE)["title"] == "the first tamp's"
+
+
+async def test_the_demo_never_writes_your_queue_or_status() -> None:
+    from tamp import config
+    from tamp.app import TampApp
+
+    config.QUEUE_FILE.unlink(missing_ok=True)
+    config.STATUS_FILE.unlink(missing_ok=True)
+    app = TampApp(demo=True)
+    async with app.run_test(size=(120, 36)) as pilot:
+        await pilot.pause(0.3)
+        await app.player.play(app.library.liked()[:2] or tracks(2), 0)
+        await pilot.pause(0.3)
+    assert not config.QUEUE_FILE.exists() and not config.STATUS_FILE.exists()
