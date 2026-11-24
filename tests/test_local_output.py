@@ -117,3 +117,62 @@ async def test_this_mpv_plays_gapless_with_leveling_on(tmp_path) -> None:
         assert (errors == []) == (mpv.version >= (0, 38))
     finally:
         await local.close()
+
+
+# ── a second tamp ──
+async def test_a_second_tamp_leaves_the_first_ones_socket_and_pidfile(tmp_path, monkeypatch) -> None:
+    import json
+    import os
+    import socket
+
+    from tamp.mpv import AlreadyRunning, private_dir
+
+    monkeypatch.setattr(Mpv, "available", staticmethod(lambda: True))
+    second = Mpv(tmp_path / "mpv.sock", lambda _m: None)
+    private_dir(second.socket.parent)
+    first = socket.socket(socket.AF_UNIX)  # the first tamp's mpv, listening
+    first.bind(str(second.socket))
+    first.listen()
+    pidfile = second.socket.with_suffix(".pid")
+    pidfile.write_text(json.dumps({"mpv": 999_999_999, "owner": os.getpid()}))  # a live owner
+    try:
+        with pytest.raises(AlreadyRunning):
+            await second.start()
+        await second.quit()  # what quitting the second tamp does
+        assert second.socket.exists() and pidfile.exists()
+    finally:
+        first.close()
+        second.socket.unlink(missing_ok=True)
+        pidfile.unlink(missing_ok=True)
+
+
+async def test_a_player_that_does_not_own_the_state_files_leaves_them_alone() -> None:
+    from tamp import config
+    from tamp.models import Playback
+
+    config.write_state(config.STATUS_FILE, {"pid": 1, "title": "the first tamp's"})
+    config.QUEUE_FILE.unlink(missing_ok=True)
+    player = Player(DemoLibrary(), lambda s, q: None, persist=False)
+    player.output = None
+    await player.play(tracks(2), 0)
+    player.changed(Playback(track=player.queue.track, paused=False))
+    player.clear_status()
+    assert config.read_state(config.STATUS_FILE)["title"] == "the first tamp's"
+    assert not config.QUEUE_FILE.exists()
+
+
+async def test_the_app_stands_aside_when_another_tamp_runs(monkeypatch) -> None:
+    from tamp import config
+    from tamp.app import TampApp
+    from tamp.mpv import AlreadyRunning
+
+    async def refuse(self) -> None:
+        raise AlreadyRunning("another tamp is already running (its mpv socket is in use)")
+
+    monkeypatch.setattr(Mpv, "start", refuse)
+    config.write_state(config.STATUS_FILE, {"pid": 1, "title": "the first tamp's"})
+    app = TampApp(demo=True)
+    async with app.run_test(size=(120, 36)) as pilot:
+        await pilot.pause(0.5)
+        assert app.player.persist is False
+    assert config.read_state(config.STATUS_FILE)["title"] == "the first tamp's"

@@ -27,6 +27,10 @@ class MpvError(RuntimeError):
     pass
 
 
+class AlreadyRunning(MpvError):
+    """Another tamp's mpv holds the socket."""
+
+
 def parse_version(text: object) -> tuple[int, int] | None:
     """(major, minor) from mpv's `mpv-version` ("mpv 0.37.0", "mpv v0.38.0-458-g1234abcd")."""
     found = re.search(r"(\d+)\.(\d+)", text) if isinstance(text, str) else None
@@ -65,6 +69,7 @@ class Mpv:
         self._pending: dict[int, asyncio.Future] = {}
         self._ids = itertools.count(1)
         self.version: tuple[int, int] | None = None  # known once started
+        self._owner = False  # the socket and pidfile are ours to remove (we started this mpv)
 
     @property
     def running(self) -> bool:
@@ -81,9 +86,10 @@ class Mpv:
             raise MpvError("mpv isn't installed (brew install mpv / apt install mpv)")
         private_dir(self.socket.parent)
         if await self._socket_alive() and not self._reap_orphan():
-            raise MpvError("another tamp is already running (its mpv socket is in use)")
+            raise AlreadyRunning("another tamp is already running (its mpv socket is in use)")
         with contextlib.suppress(FileNotFoundError):
             self.socket.unlink()
+        self._owner = True
         self._process = await asyncio.create_subprocess_exec(
             "mpv",
             "--idle=yes",
@@ -206,10 +212,12 @@ class Mpv:
                 await asyncio.wait_for(self._process.wait(), timeout=3)
         if self._reader_task:
             self._reader_task.cancel()
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(self.socket)
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(self._pidfile)
+        if self._owner:  # never another tamp's: it would lose its socket and its pidfile
+            self._owner = False
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(self.socket)
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(self._pidfile)
 
 
 def _alive(pid: int) -> bool:

@@ -27,8 +27,11 @@ class Player:
         on_update: Callable[[Playback, Queue], None],
         on_error: Callable[[str], None] = lambda _m: None,
         report: bool = True,
+        persist: bool = True,
     ) -> None:
         self.report = report  # False: a private session, nothing goes to Plex's history
+        # False: the queue and status files belong to someone else (another tamp, or the demo)
+        self.persist = persist
         self.library = library
         self.on_update = on_update
         self.on_error = on_error
@@ -268,6 +271,8 @@ class Player:
 
     # ── persistence ──
     def _save_queue(self) -> None:
+        if not self.persist:
+            return
         data = {
             "current": self.queue.current,
             "repeat": self.queue.repeat,
@@ -295,6 +300,8 @@ class Player:
             )
 
     def _write_status(self) -> None:
+        if not self.persist:
+            return
         s, t = self.state, self.state.track
         data = {
             "pid": __import__("os").getpid(),
@@ -311,5 +318,7 @@ class Player:
             config.write_state(config.STATUS_FILE, data)
 
     def clear_status(self) -> None:
+        if not self.persist:
+            return
         with contextlib.suppress(OSError):
             config.STATUS_FILE.unlink()

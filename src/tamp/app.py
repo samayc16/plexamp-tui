@@ -18,7 +18,7 @@ from tamp.errors import describe, redact
 from tamp.library import Library, PlexLibrary
 from tamp.lrc import Lyrics
 from tamp.models import THIS_DEVICE, Playback, Track
-from tamp.mpv import Mpv, MpvError
+from tamp.mpv import AlreadyRunning, Mpv, MpvError
 from tamp.output import LocalOutput, RemoteOutput, TaskSet
 from tamp.player import Player
 from tamp.queue import Queue
@@ -193,6 +193,8 @@ class TampApp(App):
         try:
             await self.player.use(self.local)
         except MpvError as e:
+            if isinstance(e, AlreadyRunning):
+                self.player.persist = False  # the queue and status files are the other tamp's
             self.notify(
                 f"{e}: you can still browse and control other players (o)", severity="warning", timeout=10
             )
