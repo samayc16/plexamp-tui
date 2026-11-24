@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import ClassVar
 
+from rich.cells import cell_len
 from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
@@ -31,7 +32,8 @@ class ContextMenu(ModalScreen[str]):
         self.title_text, self.items, self.x, self.y = title, items, x, y
 
     def compose(self) -> ComposeResult:
-        width = max(len(self.title_text), *(len(label) + len(key) + 6 for _, label, key in self.items)) + 4
+        widest = max(len(label) + len(key) + 6 for _, label, key in self.items)
+        width = max(cell_len(self.title_text), widest) + 4
         rows = [
             Option(
                 Text.assemble((f" {label}".ljust(width - len(key) - 3), fmt.FG), (key, fmt.DIM)), id=item_id

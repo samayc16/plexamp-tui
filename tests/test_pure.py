@@ -310,3 +310,28 @@ def test_config_values_of_the_wrong_type_fall_back_to_their_defaults(tmp_path, m
     assert loaded.user_token == "" and loaded.loudness_leveling is True
     assert loaded.theme == config.Config().theme and loaded.device_id == "local"
     assert loaded.mpv_args == ()
+
+
+def test_rows_line_up_with_wide_characters() -> None:
+    from rich.cells import cell_len
+
+    from tamp.ui import fmt
+
+    tracks = [
+        Track(
+            id="1",
+            title="丸の内サディスティック",
+            artist="椎名林檎",
+            album="無罪モラトリアム",
+            duration_ms=1000,
+        ),
+        Track(id="2", title="🎵 Song 🎶", artist="Plain Artist", album="An Album", duration_ms=1000),
+        Track(id="3", title="Ascii", artist="방탄소년단", album="BE", duration_ms=1000),
+    ]
+    for width in range(44, 120, 7):
+        cols = fmt.columns(tracks, width, show_album=True)
+        for t in tracks:
+            assert cell_len(fmt.track_row(t, cols).plain) == width, (t.title, width)
+    for text in ("無罪モラトリアム", "🎵🎶 tune", "plain words"):
+        for width in range(1, 12):
+            assert cell_len(fmt.fit(text, width)) == width, (text, width)

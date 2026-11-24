@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from rich.cells import cell_len, set_cell_size
 from rich.text import Text
 
 from tamp.models import Album, Artist, Playlist, Track
@@ -34,10 +35,11 @@ def duration(ms: int) -> str:
 
 
 def fit(text: str, width: int) -> str:
-    """Pad or cut to exactly `width` cells."""
+    """Pad or cut to exactly `width` terminal cells (CJK and most emoji take two each)."""
     if width <= 0:
         return ""
-    return text.ljust(width) if len(text) <= width else text[: width - 1] + "…"
+    used = cell_len(text)
+    return text + " " * (width - used) if used <= width else set_cell_size(text, width - 1) + "…"
 
 
 @dataclass(frozen=True)
@@ -63,9 +65,9 @@ def columns(
     num = num + 1 if num else 0
     fixed = 2 + num + 3 + 7  # marker, number, " ♥ ", duration
     avail = max(MIN_TITLE, width - fixed)
-    want_title = max((len(t.title) for t in tracks), default=MIN_TITLE)
-    want_artist = max((len(t.artist) for t in tracks), default=MIN_ARTIST)
-    want_album = max((len(t.album) for t in tracks), default=MIN_ALBUM) if show_album else 0
+    want_title = max((cell_len(t.title) for t in tracks), default=MIN_TITLE)
+    want_artist = max((cell_len(t.artist) for t in tracks), default=MIN_ARTIST)
+    want_album = max((cell_len(t.album) for t in tracks), default=MIN_ALBUM) if show_album else 0
     title = min(want_title, avail)
     artist = min(want_artist, max(MIN_ARTIST, avail - title - GAP))
     album = min(want_album, max(0, avail - title - artist - 2 * GAP)) if show_album else 0
@@ -112,7 +114,7 @@ def artist_row(a: Artist, width: int) -> Text:
     genres = ", ".join(a.genres[:2])
     return Text.assemble(
         ("  ◉ ", colour("PURPLE")),
-        (fit(a.title, max(10, width - 6 - len(genres))), colour("FG")),
+        (fit(a.title, max(10, width - 6 - cell_len(genres))), colour("FG")),
         (genres, colour("DIM")),
     )
 
