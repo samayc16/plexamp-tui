@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -117,4 +117,3 @@ class Playback:
     paused: bool = True
     volume: int = 100
     index: int = -1  # position in the queue
-    extra: dict = field(default_factory=dict, compare=False, hash=False)

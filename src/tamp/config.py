@@ -35,7 +35,6 @@ class Config:
     server_name: str = ""
     section_id: str = ""  # the music library
     device_id: str = "local"  # where to play: "local" or a player's machineIdentifier
-    volume: int = 100
     loudness_leveling: bool = True
     # extra mpv options for local playback, e.g. ["--audio-device=coreaudio/BuiltInSpeakerDevice"]
     # (`mpv --audio-device=help` lists devices); options only, and never the control socket

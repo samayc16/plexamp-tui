@@ -516,6 +516,3 @@ class RemoteOutput:
     async def close(self) -> None:
         if self._poller:
             self._poller.cancel()
-
-
-FollowOutput = RemoteOutput  # a RemoteOutput without a client only follows
