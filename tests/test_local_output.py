@@ -199,3 +199,16 @@ async def test_repeat_all_on_a_single_track_queues_it_again() -> None:
     assert [c[1:3] for c in mpv.loadfiles()] == [("tone://0", "replace"), ("tone://0", "append")]
     await out.set_repeat("off")  # and off again: nothing after it
     assert mpv.commands[-1] == ("playlist-remove", 1)
+
+
+@pytest.mark.skipif(shutil.which("mpv") is None, reason="needs mpv")
+async def test_mpv_that_exits_at_start_says_so_at_once(tmp_path) -> None:
+    import time
+
+    from tamp.mpv import MpvError
+
+    mpv = Mpv(tmp_path / "mpv.sock", lambda _m: None, ("--definitely-not-an-mpv-option",))
+    started = time.monotonic()
+    with pytest.raises(MpvError, match=r"mpv exited at start \(code \d+\).*mpv_args"):
+        await mpv.start()
+    assert time.monotonic() - started < 3  # not the 5 s wait for a socket that won't come

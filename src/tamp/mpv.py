@@ -109,6 +109,10 @@ class Mpv:
             stderr=asyncio.subprocess.DEVNULL,
         )
         for _ in range(100):  # up to 5 s for the socket to appear
+            if (code := self._process.returncode) is not None:  # it quit: a bad option, most likely
+                hint = ': check "mpv_args" in config.json' if self.extra_args else ""
+                await self.quit()
+                raise MpvError(f"mpv exited at start (code {code}){hint}")
             if self.socket.exists():
                 try:
                     reader, self._writer = await asyncio.open_unix_connection(str(self.socket))
