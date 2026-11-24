@@ -123,12 +123,95 @@ def test_timeline_and_identity(stub) -> None:
     assert Companion("http://127.0.0.1:9", PLAYER_ID, "c", "t", timeout=0.5).identity() is None
 
 
+def _tokens_sent(stub) -> list[str]:
+    return [p for p, _, h in stub.requests if h.get("X-Plex-Token")]
+
+
+def _local(_host: str) -> bool:
+    return True
+
+
+def _elsewhere(_host: str) -> bool:
+    return False
+
+
 def test_untrusted_address_never_gets_the_token(stub) -> None:
+    """A player found only by the LAN broadcast (GDM), at an address plex.tv doesn't list for
+    that device, can claim any identity: it never gets the token, not even after the probe."""
     from tamp.plex import _companion
 
-    assert _companion(stub.url, PLAYER_ID, "c", "secret", trusted=False) is not None
-    assert all(h.get("X-Plex-Token", "") == "" for p, _, h in stub.requests if p == "/resources")
-    assert _companion(stub.url, "someone-else", "c", "secret", trusted=True) is None  # wrong identity
+    c = _companion(stub.url, PLAYER_ID, "c", "secret", listed=False, local=_local)
+    assert c is not None
+    c.timeline()
+    c.command("pause")
+    assert len(stub.requests) == 3 and _tokens_sent(stub) == []
+
+
+def test_every_probe_goes_without_the_token(stub) -> None:
+    from tamp.plex import _companion
+
+    assert _companion(stub.url, "someone-else", "c", "secret", listed=True, local=_local) is None
+    assert stub.requests and _tokens_sent(stub) == []  # whatever answers there learns nothing
+
+
+def test_the_token_follows_only_a_matching_identity_on_this_network(stub) -> None:
+    from tamp.plex import _companion
+
+    c = _companion(stub.url, PLAYER_ID, "c", "secret", listed=True, local=_local)
+    assert c is not None
+    c.command("pause")
+    assert _tokens_sent(stub) == ["/player/playback/pause"]  # the probe before it went without
+
+
+def test_a_listed_address_off_this_network_never_gets_the_token(stub) -> None:
+    """plex.tv lists your devices' home-LAN addresses; on a café network the same address is
+    someone else's machine, so the token only goes where this computer is directly attached."""
+    from tamp.plex import _companion
+
+    c = _companion(stub.url, PLAYER_ID, "c", "secret", listed=True, local=_elsewhere)
+    assert c is not None
+    c.timeline()
+    assert _tokens_sent(stub) == []
+
+
+@pytest.mark.parametrize(
+    ("host", "source", "local"),
+    [
+        ("127.0.0.1", None, True),
+        ("::1", None, True),
+        ("192.168.1.20", "192.168.1.57", True),
+        ("192.168.1.20", "192.168.7.57", False),  # routed elsewhere: another network
+        ("192.168.1.20", "10.0.0.8", False),
+        ("192.168.1.20", None, False),  # no route at all
+        ("fd00:1:2:3::20", "fd00:1:2:3::99", True),
+        ("fd00:1:2:3::20", "fd00:1:2:4::99", False),
+        ("203.0.113.9", "192.168.1.57", False),
+        ("phone.local", "192.168.1.57", False),  # a name can point somewhere else later
+    ],
+)
+def test_on_local_network(host: str, source: str | None, local: bool) -> None:
+    from tamp.plex import on_local_network
+
+    assert on_local_network(host, source=lambda _h: source) is local
+
+
+def test_a_gdm_address_plex_tv_lists_for_the_device_may_have_the_token(stub, monkeypatch) -> None:
+    from tamp import plex
+    from tamp.models import Device
+
+    monkeypatch.setattr(plex, "LOCAL_PLAYER", "http://127.0.0.1:9")  # never a real Plexamp here
+    monkeypatch.setattr(plex, "on_local_network", _local)
+    device = Device(PLAYER_ID, "iPhone")
+    # plex.tv's addresses for the phone don't answer; the broadcast finds it at the stub
+    listed = [plex.PlayerInfo(device, ("http://localhost:9",))]
+    monkeypatch.setattr(plex, "players", lambda token: listed)
+    monkeypatch.setattr(plex, "gdm_players", lambda: {PLAYER_ID: plex.PlayerInfo(device, (stub.url,))})
+    out = plex.output_for(PLAYER_ID, "c", "secret", server=None, library=None)
+    assert out.companion is not None and out.companion.token == ""  # an address only GDM vouches for
+
+    listed[0] = plex.PlayerInfo(device, ("http://127.0.0.1:9",))  # the stub's address, another port
+    out = plex.output_for(PLAYER_ID, "c", "secret", server=None, library=None)
+    assert out.companion is not None and out.companion.token == "secret"
 
 
 async def test_remote_output_plays_follows_and_pauses(stub) -> None:

@@ -5,10 +5,13 @@ Every function here blocks on the network; the UI calls them through asyncio.to_
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import platform
+import socket
+from collections.abc import Callable
 from dataclasses import dataclass
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from xml.etree import ElementTree
 
 import plexapi
@@ -167,13 +170,13 @@ def music_sections(server: PlexServer) -> list:
 
 # ── Remote control ────────────────────────────────────────────────────
 LOCAL_PLAYER = "http://127.0.0.1:32500"  # Plexamp on this computer, when its Remote Control is on
+LOCAL_PREFIX = {4: 24, 6: 64}  # "the same network": a typical home LAN's prefix
 
 
 @dataclass(frozen=True)
 class PlayerInfo:
     device: Device
     urls: tuple[str, ...]  # where to reach its Companion API, most likely first
-    trusted: bool  # addresses from plex.tv for your account (safe to send the token to)
 
 
 def players(token: str) -> list[PlayerInfo]:
@@ -185,7 +188,7 @@ def players(token: str) -> list[PlayerInfo]:
             continue
         urls = tuple(c.uri for c in sorted(r.connections, key=lambda c: (not c.local,)) if not c.relay)
         device = Device(id=r.clientIdentifier, name=r.name, product=r.product or "")
-        found.append(PlayerInfo(device, urls, trusted=True))
+        found.append(PlayerInfo(device, urls))
     return found
 
 
@@ -204,19 +207,68 @@ def gdm_players(timeout: float = 1.5) -> dict[str, PlayerInfo]:
         ident, port = data.get("Resource-Identifier"), data.get("Port")
         if ident and port and host:
             device = Device(id=ident, name=data.get("Name", "player"), product=data.get("Product", ""))
-            found[ident] = PlayerInfo(device, (f"http://{host}:{port}",), trusted=False)
+            found[ident] = PlayerInfo(device, (f"http://{host}:{port}",))
     return found
 
 
-def _companion(url: str, device_id: str, client_id: str, token: str, trusted: bool):
-    """A Companion client for `url` if the player there is `device_id`. The token only goes to
-    addresses plex.tv gave us for your devices, or to a player that answered without it."""
+def source_address(host: str) -> str | None:
+    """The address this computer would send from to reach `host` (an IP), or None if it has
+    no route there. Connecting a UDP socket picks the route and sends nothing."""
+    try:
+        family, _, _, _, where = socket.getaddrinfo(host, 9, type=socket.SOCK_DGRAM)[0]
+        with socket.socket(family, socket.SOCK_DGRAM) as s:
+            s.connect(where)
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
+def on_local_network(host: str, source: Callable[[str], str | None] = source_address) -> bool:
+    """`host` is this computer, or on a network it's directly attached to: the same /24 (or
+    IPv6 /64) as the address we'd send from. Names don't count: where one points can change
+    between this check and the request."""
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    try:
+        mine = ipaddress.ip_address((source(host) or "").split("%")[0])
+    except ValueError:
+        return False
+    if mine.version != address.version:
+        return False
+    shift = address.max_prefixlen - LOCAL_PREFIX[address.version]
+    return int(mine) >> shift == int(address) >> shift
+
+
+def _identifies_as(url: str, device_id: str, client_id: str) -> bool:
+    """Whether the player at `url` says it's `device_id`. Asked without the token, always:
+    whatever answers at an address learns nothing from the question."""
     from tamp.companion import Companion
 
-    probe = Companion(url, device_id, client_id, token if trusted else "", timeout=2)
-    if probe.identity() != device_id:
+    return Companion(url, device_id, client_id, "", timeout=2).identity() == device_id
+
+
+def _companion(
+    url: str,
+    device_id: str,
+    client_id: str,
+    token: str,
+    listed: bool,
+    local: Callable[[str], bool] | None = None,
+):
+    """A Companion client for `url` if the player there is `device_id`. It carries the token
+    only to an address plex.tv lists for that device (or Plexamp on this computer) that is
+    on this computer or a network it's directly attached to. Elsewhere it goes without."""
+    from tamp.companion import Companion
+
+    if not _identifies_as(url, device_id, client_id):
         return None
-    return Companion(url, device_id, client_id, token)
+    local = local or on_local_network
+    trusted = listed and local(urlparse(url).hostname or "")
+    return Companion(url, device_id, client_id, token if trusted else "")
 
 
 def list_players(client_id: str, token: str, server: PlexServer) -> list[Device]:
@@ -225,9 +277,7 @@ def list_players(client_id: str, token: str, server: PlexServer) -> list[Device]
     found: dict[str, Device] = {}
     account_players = players(token)
     known = {p.device.id for p in account_players}
-    local = next(
-        (p for p in account_players if _companion(LOCAL_PLAYER, p.device.id, client_id, token, True)), None
-    )
+    local = next((p for p in account_players if _identifies_as(LOCAL_PLAYER, p.device.id, client_id)), None)
     if local is not None:
         found[local.device.id] = Device(
             local.device.id, f"{local.device.name} (this computer)", local.device.product
@@ -254,20 +304,24 @@ def list_players(client_id: str, token: str, server: PlexServer) -> list[Device]
 
 def output_for(device_id: str, client_id: str, token: str, server: PlexServer, library):
     """A RemoteOutput for a player: controllable if any address reaches its Companion API
-    (this machine, its plex.tv addresses, or the LAN broadcast), otherwise follow-only."""
+    (this machine, its plex.tv addresses, or the LAN broadcast), otherwise follow-only. An
+    address the broadcast reports counts as listed only if plex.tv lists that same IP for the
+    device: anything on the LAN can answer a broadcast in any device's name."""
     from tamp.output import RemoteOutput
 
-    account_players = {p.device.id: p for p in players(token)}
-    info = account_players.get(device_id)
-    routes: list[tuple[str, bool]] = [(LOCAL_PLAYER, True)]
-    if info is not None:
-        routes += [(url, True) for url in info.urls]
+    info = next((p for p in players(token) if p.device.id == device_id), None)
+    listed_urls = info.urls if info else ()
+    listed_hosts = {urlparse(u).hostname for u in listed_urls}
+    routes = [(LOCAL_PLAYER, True), *((u, True) for u in listed_urls)]
     lan = gdm_players().get(device_id)
     if lan is not None:
-        routes += [(url, False) for url in lan.urls]
+        routes += [(u, urlparse(u).hostname in listed_hosts) for u in lan.urls]
     companion = None
-    for url, trusted in routes:
-        if (companion := _companion(url, device_id, client_id, token, trusted)) is not None:
+    for url, listed in routes:
+        found = _companion(url, device_id, client_id, token, listed)
+        if found is not None and (found.token or not token):
+            companion = found
             break
+        companion = companion or found  # reachable, but not trusted with the token: keep looking
     device = info.device if info else (lan.device if lan else Device(id=device_id, name="player"))
     return RemoteOutput(device, server, library, companion)
