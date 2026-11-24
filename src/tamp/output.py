@@ -15,6 +15,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import replace
 from typing import Any, Protocol
 
+from tamp.companion import Timeline
 from tamp.errors import describe
 from tamp.library import Library
 from tamp.models import THIS_DEVICE, Device, Playback, Stream, Track
@@ -246,6 +247,7 @@ class RemoteOutput:
     lyrics stay in time."""
 
     POLL_S = 1.0
+    HANDOFF_S = 15.0  # how long a player may take to move to a queue tamp handed it
 
     def __init__(
         self,
@@ -269,9 +271,10 @@ class RemoteOutput:
         # the player's own queue, shown when it isn't one tamp handed it (you started it on the phone)
         self.on_queue: Callable[[Queue], None] = lambda _queue: None
         self._own_pq = ""  # the play queue made from tamp's queue: its tracks are already known
-        self._expect_own = False  # load() was called: the next new play queue is that one
         self._pq_seen: tuple[str, int] = ("", -1)
-        self._adopted: Queue | None = None
+        # after load(): the play queue the player had, and until when to wait for it to move on
+        self._handoff: tuple[str, float] | None = None
+        self._loads = 0  # counts load() calls: a queue fetched across one is stale
 
     @property
     def controllable(self) -> bool:
@@ -291,55 +294,65 @@ class RemoteOutput:
     async def _poll(self) -> None:
         while True:
             try:
-                state = await asyncio.to_thread(self._read_state, time.monotonic())
-                if self._adopted is not None:
-                    queue, self._adopted = self._adopted, None
-                    self.on_queue(queue)
-                if state is not None:
-                    self.state = state
-                    self.on_change(state)
+                await self._poll_once()
             except Exception:  # a flaky network shouldn't take the UI down; try again next second
                 pass
             await asyncio.sleep(self.POLL_S)
 
-    def _read_state(self, now: float) -> Playback | None:
-        if self.companion is not None:
-            try:
-                timeline = self.companion.timeline()
-            except Exception:
-                timeline = None  # gone quiet (asleep, off the Wi-Fi): fall back to the server
-            if timeline is not None:
-                self.play_queue_id = timeline.play_queue_id or self.play_queue_id
-                self._follow_queue(timeline.play_queue_id, timeline.play_queue_version, timeline.rating_key)
-                track = self._track(timeline.rating_key) if timeline.rating_key else None
-                return self._playback(
-                    track, timeline.time_ms, timeline.state == "playing", now, timeline.volume
-                )
-        item, player = self._session()
-        if item is None:
-            self._seen = None
-            return Playback(volume=self.state.volume)
-        track = self.library.track_from(item)
-        return self._playback(
-            track, int(item.viewOffset or 0), (player.state or "") == "playing", now, self.state.volume
-        )
+    async def _poll_once(self, now: float | None = None) -> None:
+        """One look at the player. Network calls run in threads; every decision about what to
+        show is made here, on the event loop, so it can't race load()."""
+        now = time.monotonic() if now is None else now
+        timeline = await asyncio.to_thread(self._timeline)
+        if timeline is not None:
+            self.play_queue_id = timeline.play_queue_id or self.play_queue_id
+            await self._follow_queue(timeline)
+            key = timeline.rating_key
+            track = await asyncio.to_thread(self._track, key) if key else None
+            state = self._playback(track, timeline.time_ms, timeline.state == "playing", now, timeline.volume)
+        else:
+            item, player = await asyncio.to_thread(self._session)
+            state = self._from_session(item, player, now)
+        self.state = state
+        self.on_change(state)
 
-    def _follow_queue(self, pq_id: str, version: int, rating_key: str) -> None:
+    def _timeline(self) -> Timeline | None:
+        if self.companion is None:
+            return None
+        try:
+            return self.companion.timeline()
+        except Exception:
+            return None  # gone quiet (asleep, off the Wi-Fi): fall back to the server
+
+    async def _follow_queue(self, timeline: Timeline) -> None:
         """Pick up the player's play queue when it's someone else's: one started on the phone, or
-        changed there. Runs in the poll thread."""
+        changed there."""
+        pq_id = timeline.play_queue_id
+        if not self._wants_queue(pq_id, timeline.play_queue_version, timeline.rating_key):
+            return
+        loads = self._loads
+        queue = await asyncio.to_thread(self._fetch_queue, pq_id)
+        if queue is None or loads != self._loads or self._handoff is not None:
+            return  # tamp handed it a queue meanwhile: this one is on its way out
+        self.queue = queue
+        self.on_queue(queue)
+
+    def _wants_queue(self, pq_id: str, version: int, rating_key: str) -> bool:
         if not pq_id:
-            return
+            return False
         seen, self._pq_seen = self._pq_seen, (pq_id, version)
-        if pq_id != seen[0] and self._expect_own:
-            self._own_pq, self._expect_own = pq_id, False
+        if self._handoff is not None:
+            before, until = self._handoff
+            if pq_id != before:  # it moved to the queue tamp handed it
+                self._own_pq, self._handoff = pq_id, None
+                return False
+            if time.monotonic() < until:
+                return False  # still on its old queue: the hand-off hasn't landed yet
+            self._handoff, seen = None, ("", -1)  # it never moved: follow what it really plays
         if pq_id == self._own_pq:
-            return
+            return False
         playing_is_known = any(t.id == rating_key for t in self.queue.tracks)
-        if (pq_id, version) == seen and playing_is_known:
-            return
-        queue = self._fetch_queue(pq_id)
-        if queue is not None:
-            self.queue = self._adopted = queue
+        return (pq_id, version) != seen or not playing_is_known
 
     def _fetch_queue(self, pq_id: str) -> Queue | None:
         from plexapi.playqueue import PlayQueue
@@ -368,8 +381,8 @@ class RemoteOutput:
                 return item, player
         return None, None
 
-    def _state_from(self, item, player, now: float) -> Playback:
-        """State from a server session (kept separate for tests)."""
+    def _from_session(self, item, player, now: float) -> Playback:
+        """What the server's session list says it plays (no network: the item has it all)."""
         if item is None:
             self._seen = None
             return Playback(volume=self.state.volume)
@@ -399,13 +412,22 @@ class RemoteOutput:
         """Hand the player a window of tracks around the current one; it builds the queue."""
         companion = self._require()
         self.queue = queue
-        self._expect_own = True
         if queue.track is None:
             await self.stop()
             return
+        self._loads += 1
+        before = self._pq_seen[0]
+        if not before:  # not polled yet: learn which queue it has, so that one isn't taken for ours
+            timeline = await asyncio.to_thread(self._timeline)
+            before = timeline.play_queue_id if timeline else ""
+        self._handoff = (before, time.monotonic() + self.HANDOFF_S)
         start = max(0, queue.current - REMOTE_WINDOW // 4)
         window = [t.id for t in queue.tracks[start : start + REMOTE_WINDOW]]
-        await asyncio.to_thread(companion.play_queue, self.server, window, queue.track.id)
+        try:
+            await asyncio.to_thread(companion.play_queue, self.server, window, queue.track.id)
+        except Exception:
+            self._handoff = None  # it kept its own queue: go on following that
+            raise
 
     async def queue_changed(self, queue: Queue) -> None:
         """Additions go into the player's own play queue on the server; nothing restarts."""

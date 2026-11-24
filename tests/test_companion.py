@@ -1,6 +1,5 @@
 """The Companion client and RemoteOutput against a stub player that speaks the protocol."""
 
-import asyncio
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -222,9 +221,9 @@ async def test_remote_output_plays_follows_and_pauses(stub) -> None:
         Device(PLAYER_ID, "iPhone"), FAKE_SERVER, lib, Companion(stub.url, PLAYER_ID, "c", "t"), states.append
     )
     await out.load(Queue().play(tracks, 1))
-    state = await asyncio.to_thread(out._read_state, 0.0)
+    await out._poll_once(now=0.0)
+    state = out.state
     assert state.track and state.track.id == tracks[1].id and not state.paused
-    out.state = state
     await out.toggle()
     assert stub.state == "paused"
 

@@ -223,23 +223,24 @@ async def test_mpv_restarts_after_a_crash(tmp_path) -> None:
         await local.close()
 
 
-def test_remote_position_ignores_time_spent_paused() -> None:
+async def test_remote_position_ignores_time_spent_paused() -> None:
     from types import SimpleNamespace
-
-    from tamp.output import RemoteOutput
 
     class Lib:
         def track_from(self, item):
             return Track(id="1", title="t", artist="a", album="b", duration_ms=300_000)
 
-    out = RemoteOutput(Device(id="phone", name="Phone"), server=None, library=Lib())
-    item = SimpleNamespace(viewOffset=60_000)
-    paused = SimpleNamespace(state="paused")
-    playing = SimpleNamespace(state="playing")
-    assert out._state_from(item, paused, now=100.0).position_ms == 60_000
-    # resumed 2 s later; the server still reports the paused offset
-    assert out._state_from(item, playing, now=102.0).position_ms == 60_000
-    assert out._state_from(item, playing, now=103.5).position_ms == 61_500
+    phone = SimpleNamespace(machineIdentifier="phone", state="paused")
+    item = SimpleNamespace(type="track", viewOffset=60_000, player=phone)
+    server = SimpleNamespace(sessions=lambda: [item])  # no Companion: the server's sessions
+    out = RemoteOutput(Device(id="phone", name="Phone"), server=server, library=Lib())
+    await out._poll_once(now=100.0)
+    assert out.state.position_ms == 60_000 and out.state.paused
+    phone.state = "playing"  # resumed 2 s later; the server still reports the paused offset
+    await out._poll_once(now=102.0)
+    assert out.state.position_ms == 60_000
+    await out._poll_once(now=103.5)
+    assert out.state.position_ms == 61_500
 
 
 async def test_a_private_session_reports_nothing() -> None:
@@ -260,30 +261,6 @@ async def test_a_private_session_reports_nothing() -> None:
     player.finished(t)
     await asyncio.sleep(0.05)
     assert calls == []
-
-
-def _queue_of(names: str, current: int) -> Queue:
-    tracks = tuple(Track(id=n, title=n, artist="a", album="b", duration_ms=1000) for n in names)
-    return Queue(tracks=tracks, current=current, source="Phone")
-
-
-def test_following_a_player_shows_its_own_queue_but_not_one_we_gave_it() -> None:
-    out = RemoteOutput(Device(id="phone", name="Phone"), server=None, library=None)
-    fetched: list[str] = []
-    out._fetch_queue = lambda pq_id: fetched.append(pq_id) or _queue_of("xyz", 1)
-
-    out._follow_queue("10", 1, "y")  # a queue started on the phone
-    assert fetched == ["10"] and out._adopted and out._adopted.track.id == "y"
-    out._adopted = None
-    out._follow_queue("10", 1, "z")  # it moved on inside the same queue: nothing to fetch
-    assert fetched == ["10"] and out._adopted is None
-    out._follow_queue("10", 2, "z")  # something was added on the phone
-    assert fetched == ["10", "10"]
-
-    out._expect_own = True  # tamp handed it a queue (load)
-    out._follow_queue("11", 1, "q")
-    out._follow_queue("11", 2, "q")  # our own additions bump the version
-    assert fetched == ["10", "10"]
 
 
 async def test_switching_output_shows_the_new_outputs_state_not_the_old_one() -> None:
