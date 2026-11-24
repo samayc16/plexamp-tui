@@ -12,13 +12,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # ubuntu-24.04 ships mpv 0.37: the path for mpv older than 0.38
+        os: [ubuntu-latest, ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: mpv
         run: |
           if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update -q && sudo apt-get install -yq mpv; else brew install mpv; fi
+          mpv --version | head -n 1
       - uses: astral-sh/setup-uv@v6
       - name: tests
         run: |
