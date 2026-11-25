@@ -92,11 +92,37 @@ uv tool install git+https://github.com/samayc16/plexamp-tui
 tamp
 ```
 
-Update with `uv tool upgrade plexamp-tui`. Every version is on the [Releases](https://github.com/samayc16/plexamp-tui/releases) page: `uv tool install git+https://github.com/samayc16/plexamp-tui@v0.1.0` installs a specific one, and the `edge` release is the latest commit that passed every test.
+tamp tells you when a newer release is out: see [Updating](#updating). Every version is on the [Releases](https://github.com/samayc16/plexamp-tui/releases) page, and the `edge` release is the latest commit that passed every test.
 
 Lyrics, sonic radio and similar artists come from your server's Plex Pass features (as they do in Plexamp). Without them, tamp still browses, plays and remote-controls; those parts just stay empty.
 
 **Signing in:** press `o` to open the Plex sign-in page or `c` to copy the link, scan the QR code with your phone, or enter the four-letter code at plex.tv/link. Then pick a Plex Home user (with their PIN if they have one), a server and a music library. `tamp logout` forgets it all.
+
+## Updating
+
+When a newer release is out, tamp says so, once per version: *plexamp-tui 0.2.0 is out (you have 0.1.0). Press U to update.* `U` installs it in the background; restart tamp to use it. If you installed tamp with pipx or pip, the notice gives the command to run instead.
+
+From the shell:
+
+```sh
+tamp update              # check now and install a newer release
+tamp update --check      # just say: exit 0 when up to date, 10 when a newer release is out
+tamp update --to v0.1.0  # install that release, older or newer: how you roll back
+```
+
+`tamp update` runs this, which you can also run yourself to install or pin a specific release:
+
+```sh
+uv tool install --upgrade https://github.com/samayc16/plexamp-tui/releases/download/v0.2.0/plexamp_tui-0.2.0-py3-none-any.whl
+```
+
+The same command installs fresh, keeps that release if it's already there, and replaces any other version, older or newer, whether it came from git or another wheel. The wheel needs no git; the tag works too, with git: `uv tool install --upgrade git+https://github.com/samayc16/plexamp-tui@v0.2.0`. Only numbered releases are offered, never `edge`.
+
+**What the check sends:** one anonymous GET to `https://api.github.com/repos/samayc16/plexamp-tui/releases/latest`, at most once a day, with `plexamp-tui/<version>` as the User-Agent and nothing else: no token, no cookie, nothing about you or your library (GitHub sees your IP address, as with any request). It runs in the background, so startup never waits, and never in `--demo`, `tamp status` or the other small commands. Turn it off with `"check_updates": false` in config.json or `TAMP_NO_UPDATE_CHECK=1`; `tamp update` still checks when you run it.
+
+A dev install (editable, such as `uv tool install --editable .`, or run from a checkout) is never prompted or updated: update it with git.
+
+**Old and new versions get along:** each one reads the files the other wrote (config.json, the queue, the status file, the caches), ignores what it doesn't know, and keeps another version's settings when it saves. Rolling back and forward again loses nothing.
 
 ## Remote control
 
@@ -130,9 +156,10 @@ The colours you can set: `bg`, `panel`, `overlay`, `line`, `select`, `hover`, `f
 
 ## Configuration
 
-`~/.config/tamp/config.json` holds your sign-in and choices, and only you can read it. Besides the theme, two settings are worth knowing:
+`~/.config/tamp/config.json` holds your sign-in and choices, and only you can read it. Besides the theme, three settings are worth knowing:
 - `"mpv_args": ["--audio-device=coreaudio/AppleUSBAudioEngine:…"]`: extra mpv options for local playback, such as which audio device to use (`mpv --audio-device=help` lists them).
 - `"loudness_leveling": false`: turn leveling off (or press `v`).
+- `"check_updates": false`: never ask GitHub for a newer release (see [Updating](#updating)).
 
 ## Use it from tmux
 
@@ -170,6 +197,7 @@ Ideas, roughly in order. Issues and PRs are very welcome.
 | `mpv.py`, `output.py` | local playback through one mpv over JSON IPC, whose playlist holds the current and next track (gapless); remote players through `companion.py`, with your server as the fallback |
 | `player.py`, `queue.py` | the queue as an immutable value, transport, play reporting, the status file for tmux |
 | `ui/` | the [Textual](https://textual.textualize.io) app: browser, menus, now playing, full-screen player, themes, help |
+| `update.py`, `install.py` | the daily check for a newer release, and installing one with uv |
 
 **Your Plex token:**
 - It's stored in `~/.config/tamp/config.json`, readable only by you.
