@@ -46,6 +46,17 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: build
         run: uv build
+      # The tests above ran against the source tree; this runs them against what's published, so a
+      # file left out of the wheel fails here instead of in someone's install.
+      - name: the wheel itself installs, starts and passes the tests
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq mpv
+          uv venv "$RUNNER_TEMP/wheel" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel/bin/python" "$(ls dist/*.whl)[test]"
+          from=$("$RUNNER_TEMP/wheel/bin/python" -c 'import tamp; print(tamp.__file__)')
+          case "$from" in "$RUNNER_TEMP"/wheel/*) ;; *) echo "::error::tests would import tamp from $from, not the wheel"; exit 1 ;; esac
+          "$RUNNER_TEMP/wheel/bin/tamp" --version
+          "$RUNNER_TEMP/wheel/bin/python" -m pytest -q -p no:cacheprovider
       - name: the tag matches the package version
         if: github.ref_type == 'tag'
         run: |

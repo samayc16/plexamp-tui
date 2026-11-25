@@ -225,6 +225,13 @@ def test_an_editable_install_is_a_dev_install_even_as_a_uv_tool(tmp_path) -> Non
     assert install.kind_of(tmp_path, {}, source) == install.DEV  # run from a checkout
 
 
+CHECKOUT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.skipif(
+    not Path(install.__file__).resolve().is_relative_to(CHECKOUT),
+    reason="testing an installed wheel, not this checkout (CI does both)",
+)
 def test_this_checkout_is_a_dev_install() -> None:
     assert install.detect().kind == install.DEV
 
