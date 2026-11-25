@@ -113,10 +113,10 @@ tamp update --to v0.1.0  # install that release, older or newer: how you roll ba
 `tamp update` runs this, which you can also run yourself to install or pin a specific release:
 
 ```sh
-uv tool install --upgrade https://github.com/samayc16/plexamp-tui/releases/download/v0.2.0/plexamp_tui-0.2.0-py3-none-any.whl
+uv tool install --upgrade https://github.com/samayc16/plexamp-tui/releases/download/v0.1.0/plexamp_tui-0.1.0-py3-none-any.whl
 ```
 
-The same command installs fresh, keeps that release if it's already there, and replaces any other version, older or newer, whether it came from git or another wheel. The wheel needs no git; the tag works too, with git: `uv tool install --upgrade git+https://github.com/samayc16/plexamp-tui@v0.2.0`. Only numbered releases are offered, never `edge`.
+The same command installs fresh, keeps that release if it's already there, and replaces any other version, older or newer, whether it came from git or another wheel. The wheel needs no git; the tag works too, with git: `uv tool install --upgrade git+https://github.com/samayc16/plexamp-tui@v0.1.0`. Only numbered releases are offered, never `edge`.
 
 **What the check sends:** one anonymous GET to `https://api.github.com/repos/samayc16/plexamp-tui/releases/latest`, at most once a day, with `plexamp-tui/<version>` as the User-Agent and nothing else: no token, no cookie, nothing about you or your library (GitHub sees your IP address, as with any request). It runs in the background, so startup never waits, and never in `--demo`, `tamp status` or the other small commands. Turn it off with `"check_updates": false` in config.json or `TAMP_NO_UPDATE_CHECK=1`; `tamp update` still checks when you run it.
 
