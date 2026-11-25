@@ -47,11 +47,7 @@ class Config:
 
 
 def load() -> Config:
-    try:
-        data = json.loads(CONFIG_FILE.read_text())
-    except (OSError, ValueError):
-        data = {}
-    config = Config(**_valid(data if isinstance(data, dict) else {}))
+    config = Config(**_valid(read_state(CONFIG_FILE)))
     return config if config.client_id else replace(config, client_id=str(uuid.uuid4()))
 
 
@@ -83,14 +79,31 @@ def mpv_args(value: object) -> tuple[str, ...]:
 
 
 def save(config: Config) -> None:
-    """Write atomically with 0600 permissions: the file holds your Plex token."""
+    """Write atomically with 0600 permissions: the file holds your Plex token. Keys this
+    version doesn't know (a newer tamp's settings, or one an older tamp still reads) are kept."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(CONFIG_DIR, 0o700)
+    data = {**asdict(config), **_others(signed_in=config.signed_in)}
     tmp = CONFIG_FILE.with_suffix(".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump(asdict(config), f, indent=2)
+        json.dump(data, f, indent=2)
     os.replace(tmp, CONFIG_FILE)
+
+
+_SECRET_WORDS = ("token", "secret", "password")
+
+
+def _others(signed_in: bool) -> dict:
+    """What config.json holds besides this version's settings, read afresh so that another tamp
+    running meanwhile keeps its changes. Signed out, nothing that looks like a credential stays:
+    a newer tamp may keep one under a name this version can't clear."""
+    return {
+        key: value
+        for key, value in read_state(CONFIG_FILE).items()
+        if key not in Config.__dataclass_fields__
+        and (signed_in or not any(word in key.lower() for word in _SECRET_WORDS))
+    }
 
 
 def signed_out(config: Config) -> Config:

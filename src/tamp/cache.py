@@ -39,6 +39,7 @@ def load_home(key: str) -> list[Hub] | None:
         return [
             Hub(h["title"], h["kind"], tuple(_item(h["kind"], i) for i in h["items"]))
             for h in data.get("hubs", [])
+            if h.get("kind") in _KINDS  # a newer version's kind of row waits for that version
         ]
-    except (KeyError, TypeError):
-        return None  # written by an older version
+    except (AttributeError, KeyError, TypeError):
+        return None  # damaged: the server's home page replaces it
