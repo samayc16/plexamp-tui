@@ -29,11 +29,12 @@ from tamp.ui.main import MainScreen
 from tamp.ui.menus import Choose
 from tamp.ui.nowplaying import NowPlaying, PlayerScreen, Seek, lyric_seek
 from tamp.ui.signin import LoadingScreen, PickScreen, PinScreen, SignInScreen, server_rows, user_rows
+from tamp.ui.updates import Updates
 
 CLI_COMMANDS = {"toggle", "next", "prev", "stop"}
 
 
-class TampApp(App):
+class TampApp(Updates, App):
     CSS_PATH = "ui/tamp.tcss"
     TITLE = "tamp"
     ENABLE_COMMAND_PALETTE = False
@@ -195,6 +196,8 @@ class TampApp(App):
             on_error=self.player.on_error,  # "couldn't queue …": say why the music will stop
         )
         await self.push_screen(MainScreen())
+        if not self.demo:
+            self.check_for_update()  # in the background: a newer release gets one notice
         try:
             await self.player.use(self.local)
         except MpvError as e:

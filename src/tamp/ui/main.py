@@ -62,6 +62,7 @@ class MainScreen(Commands, Screen):
         Binding("z", "sleep", "sleep", show=False),
         Binding("v", "app.loudness", "leveling", show=False),
         Binding("T", "app.choose_theme", "theme", show=False),
+        Binding("U", "app.install_update", "update", show=False),
         Binding("j", "cursor(1)", "down", show=False),
         Binding("k", "cursor(-1)", "up", show=False),
         Binding("g", "cursor_edge('top')", "top", show=False),

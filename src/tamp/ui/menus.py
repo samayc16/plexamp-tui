@@ -107,6 +107,7 @@ HELP: list[tuple[str, list[tuple[str, str]]]] = [
             ("o", "play on: this computer, Plexamp, your phone…"),
             ("z · v", "sleep timer · loudness leveling"),
             ("T", "theme: built-ins, your own, or auto (colours from the album art)"),
+            ("U", "update tamp, once it says a new version is out"),
             ("?", "this help"),
             ("q", "quit"),
         ],
@@ -116,6 +117,8 @@ HELP: list[tuple[str, list[tuple[str, str]]]] = [
         [
             ("tamp status", "what's playing (put it in your tmux bar)"),
             ("tamp toggle · next · prev", "control the running tamp (bind them to keys)"),
+            ("tamp update", "check for a new version now and install it (--check: just say)"),
+            ("tamp update --to vX.Y.Z", "install that release: how you roll back"),
             ("tamp --demo · tamp logout", "offline demo · forget your sign-in"),
         ],
     ),
