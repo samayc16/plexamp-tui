@@ -40,6 +40,7 @@ class Config:
     # (`mpv --audio-device=help` lists devices); options only, and never the control socket
     mpv_args: tuple[str, ...] = ()
     theme: str = "monokai-pro"  # a built-in, one of yours (~/.config/tamp/themes/*.toml), or "auto"
+    check_updates: bool = True  # ask GitHub, at most daily, whether there's a newer release
 
     @property
     def signed_in(self) -> bool:
