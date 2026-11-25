@@ -92,7 +92,7 @@ uv tool install git+https://github.com/samayc16/plexamp-tui
 tamp
 ```
 
-Update with `uv tool upgrade plexamp-tui`.
+Update with `uv tool upgrade plexamp-tui`. Every version is on the [Releases](https://github.com/samayc16/plexamp-tui/releases) page: `uv tool install git+https://github.com/samayc16/plexamp-tui@v0.1.0` installs a specific one, and the `edge` release is the latest commit that passed every test.
 
 Lyrics, sonic radio and similar artists come from your server's Plex Pass features (as they do in Plexamp). Without them, tamp still browses, plays and remote-controls; those parts just stay empty.
 
